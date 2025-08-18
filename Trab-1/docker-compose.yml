@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:4-management  
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"  
+      - "15672:15672" 
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    networks:
+      - leilao_net
+
+  client:
+    build: ./client
+    container_name: ms_client
+    depends_on:
+      - rabbitmq
+    networks:
+      - leilao_net
+
+  ms_leilao:
+    build: ./ms_leilao
+    container_name: ms_leilao
+    depends_on:
+      - rabbitmq
+    networks:
+      - leilao_net
+
+  ms_lance:
+    build: ./ms_lance
+    container_name: ms_lance
+    depends_on:
+      - rabbitmq
+    networks:
+      - leilao_net
+
+  ms_notificacao:
+    build: ./ms_notificacao
+    container_name: ms_notificacao
+    depends_on:
+      - rabbitmq
+    networks:
+      - leilao_net
+
+networks:
+  leilao_net:
+    driver: bridge
