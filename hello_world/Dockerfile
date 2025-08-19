@@ -6,4 +6,4 @@ RUN pip poetry install
 
 COPY . .
 
-CMD ["python", ".py"]
+CMD ["python", "send.py"]
