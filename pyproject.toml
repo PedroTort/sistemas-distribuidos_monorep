@@ -11,6 +11,7 @@ python = "^3.12"
 pika = "1.0.0"
 requests = "2.31.0"
 pycryptodome = "^3.23.0"
+cryptography = "^45.0.6"
 
 [build-system]
 requires = ["poetry-core>=1.4.0"]
