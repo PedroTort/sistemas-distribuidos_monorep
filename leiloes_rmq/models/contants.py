@@ -1,7 +1,9 @@
 from enum import Enum
 
-class QueueNames(Enum):
+class ExchangeNames(Enum):
     LEILAO = "leilao"
+
+class QueueNames(Enum):
     LEILAO_INICIADO = "leilao_iniciado"
     LEILAO_FINALIZADO = "leilao_finalizado"
     LANCE_REALIZADO = "lance_realizado"
