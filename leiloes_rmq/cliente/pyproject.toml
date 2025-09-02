@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Microservices auction system using RabbitMQ"
 authors = ["Eduardo Soviersovski",  "Pedro Tortola"]
 readme = "README.md"
-packages = [{ include = "cliente" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"

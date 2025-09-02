@@ -1,7 +1,8 @@
-import pika
+import json
+
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
-from leiloes_rmq.models.contants import QueueNames, ExchangeNames
+from leiloes_rmq.models.contants import ExchangeNames
 
 
 class Cliente:
@@ -22,15 +23,28 @@ class Cliente:
     def subscribe_to_auction(self, auction_queue: str):
         if auction_queue not in self.subscribed_auctions:
             self.subscribed_auctions.append(auction_queue)
-            queue_name = auction_queue  # Each auction has its own queue
+            queue_name = f"{auction_queue}_{self.name}"
             self.channel.queue_declare(queue=queue_name)
             self.channel.queue_bind(
-                exchange=self.exchange_name, queue=queue_name, routing_key=queue_name
+                exchange=self.exchange_name, queue=queue_name, routing_key=auction_queue
             )
             self.channel.basic_consume(
                 queue=queue_name, on_message_callback=self.callback, auto_ack=True
             )
-            print(f"{self.name} subscribed to auction: {auction_queue}")
+
+    def bid_to_auction(self, auction_queue: str, bid_value: int):
+        if auction_queue in self.subscribed_auctions:
+            body = {
+                "id_leilao": auction_queue,
+                "cliente": self.name,
+                "valor_lance": bid_value
+            }
+            self.channel.basic_publish(
+                exchange=self.exchange_name, routing_key="lance_realizado" , body=json.dumps(body)
+            )
+            print(f" [x] {self.name} bid {bid_value} to {auction_queue}")
+        else:
+            print(f" [!] {self.name} is not subscribed to {auction_queue}")
 
     def start_listening(self):
         print(f"{self.name} is now listening to auctions: {self.subscribed_auctions}")
