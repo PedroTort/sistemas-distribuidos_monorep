@@ -1,21 +1,38 @@
+import json
 import time
+from datetime import datetime, timedelta
 
 import pika
 
-from leiloes_rmq.models.contants import ExchangeNames
-
 connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
 channel = connection.channel()
-exchange_name = ExchangeNames.LEILAO.value
+exchange_name = "leilao"
 
 for i in range(1, 3):
-    message="Leilao iniciado"
-    auction_name=f"leilao_{i}"
+    body={
+        "id_leilao": f"leilao_{i}",
+        "start_time": datetime.now().strftime("%H:%M:%S"),
+        "end_time": (datetime.now() + timedelta(seconds=5)).strftime("%H:%M:%S")
+
+    }
+    queue_name="leilao_iniciado"
     channel.exchange_declare(exchange=exchange_name, exchange_type="direct")
     channel.basic_publish(
-        exchange=exchange_name, routing_key=auction_name, body=message
+        exchange=exchange_name, routing_key=queue_name, body=json.dumps(body)
     )
-    print(f" [x] Sent {auction_name}:{message}")
+    print(f" [x] Sent {queue_name}:{body}")
+    time.sleep(5)
+
+for i in range(1, 3):
+    body={
+        "id_leilao": f"leilao_{i}"
+    }
+    queue_name="leilao_finalizado"
+    channel.exchange_declare(exchange=exchange_name, exchange_type="direct")
+    channel.basic_publish(
+        exchange=exchange_name, routing_key=queue_name, body=json.dumps(body)
+    )
+    print(f" [x] Sent {queue_name}:{body}")
     time.sleep(5)
 
 connection.close()
