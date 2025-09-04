@@ -8,9 +8,18 @@ class Lance:
         cls.connection = connection
         cls.channel = channel
         cls.exchange_name = "leilao"
-        cls.subscribed_queues = ["lance_realizado","leilao_iniciado", "leilao_finalizado"]
+        cls.subscribed_queues = ["lance_realizado", "leilao_finalizado"]
         cls.active_auctions = []
         cls.auction_results = {}
+        queue_name = f"leilao_iniciado_lance"
+        cls.channel.queue_declare(queue=queue_name)
+        cls.channel.queue_bind(
+            exchange=cls.exchange_name, queue=queue_name, routing_key="leilao_iniciado"
+        )
+        cls.channel.basic_consume(
+            queue=queue_name, on_message_callback=cls.callback, auto_ack=True
+        )
+
         cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type='direct')
 
     @classmethod
@@ -30,9 +39,9 @@ class Lance:
     def handle_bid_made(cls, routing_key: str, body: str):
         new_bid = json.loads(body)
         if new_bid["id_leilao"] in cls.active_auctions:
-            current_bid = cls.auction_results[routing_key]
+            current_bid = cls.auction_results[new_bid["id_leilao"]]
             if new_bid["valor_lance"] > current_bid["valor_lance"]:
-                cls.auction_results[routing_key] = body
+                cls.auction_results[new_bid["id_leilao"]] = body
                 cls.notify_valid_bid(body)
 
     @classmethod
@@ -50,7 +59,7 @@ class Lance:
         exchange_name = "leilao"
         cls.channel.exchange_declare(exchange=exchange_name, exchange_type="direct")
         cls.channel.basic_publish(
-            exchange=exchange_name, routing_key="lance_validado", body=json.dumps(body)
+            exchange=exchange_name, routing_key="lance_validado", body=body
         )
         print(f" [x] lance_validado:{body}")
 
