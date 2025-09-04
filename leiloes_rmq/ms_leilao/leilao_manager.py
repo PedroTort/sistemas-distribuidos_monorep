@@ -1,5 +1,15 @@
-from leiloes_rmq.models.contants import QueueNames
+from enum import Enum
+
 import pika
+
+class QueueNames(Enum):
+    LEILAO_INICIADO = "leilao_iniciado"
+    LEILAO_FINALIZADO = "leilao_finalizado"
+    LANCE_REALIZADO = "lance_realizado"
+    LANCE_VALIDADO = "lance_validado"
+    LANCE_VENCEDOR = "leilao_vencedor"
+    LEILAO_1 = "leilao_1"
+    LEILAO_2 = "leilao_2"
 
 connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 channel = connection.channel()

@@ -57,7 +57,7 @@ class Lance:
     @classmethod
     def handle_auction_finished(cls, routing_key: str, body: str):
         body = json.loads(body)
-        queue_name = "lance_vencedor"
+        queue_name = "leilao_vencedor"
 
         result = cls.auction_results.get(body.get("id_leilao"))
 

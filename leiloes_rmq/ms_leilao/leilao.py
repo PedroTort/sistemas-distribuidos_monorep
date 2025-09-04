@@ -21,7 +21,7 @@ for i in range(1, 3):
         exchange=exchange_name, routing_key=queue_name, body=json.dumps(body)
     )
     print(f" [x] Sent {queue_name}:{body}")
-    time.sleep(5)
+    time.sleep(1)
 
 for i in range(1, 3):
     body={

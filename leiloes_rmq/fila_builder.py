@@ -7,7 +7,7 @@ class QueueNames(Enum):
     LEILAO_FINALIZADO = "leilao_finalizado"
     LANCE_REALIZADO = "lance_realizado"
     LANCE_VALIDADO = "lance_validado"
-    LANCE_VENCEDOR = "lance_vencedor"
+    LANCE_VENCEDOR = "leilao_vencedor"
     LEILAO_1 = "leilao_1"
     LEILAO_2 = "leilao_2"
 
