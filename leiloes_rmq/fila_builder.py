@@ -14,7 +14,7 @@ class QueueNames(Enum):
 connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 channel = connection.channel()
 
-def create_queue(channel_intance, queue_name: str, durable: bool):
+def create_queue(channel_intance, queue_name: str, durable: bool=False):
     channel_intance.queue_declare(queue=queue_name, durable=durable)
 
 for queue in QueueNames:

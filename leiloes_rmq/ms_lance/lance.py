@@ -12,15 +12,14 @@ class Lance:
         cls.active_auctions = []
         cls.auction_results = {}
         queue_name = f"leilao_iniciado_lance"
-        cls.channel.queue_declare(queue=queue_name)
+        cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type='direct')
+        cls.channel.queue_declare(queue=queue_name, durable=True)
         cls.channel.queue_bind(
             exchange=cls.exchange_name, queue=queue_name, routing_key="leilao_iniciado"
         )
         cls.channel.basic_consume(
             queue=queue_name, on_message_callback=cls.callback, auto_ack=True
         )
-
-        cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type='direct')
 
     @classmethod
     def callback(cls, ch, method, properties, body):
@@ -79,7 +78,7 @@ class Lance:
 
     def subscribe_to_queues(self):
         for queue_name in self.subscribed_queues:
-            self.channel.queue_declare(queue=queue_name)
+            self.channel.queue_declare(queue=queue_name, durable=True)
             self.channel.queue_bind(
                 exchange=self.exchange_name, queue=queue_name, routing_key=queue_name
             )

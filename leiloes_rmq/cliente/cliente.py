@@ -11,7 +11,8 @@ class Cliente:
         self.subscribed_auctions = []
 
         queue_name = f"leilao_iniciado_{self.name}"
-        self.channel.queue_declare(queue=queue_name)
+        self.channel.exchange_declare(exchange=self.exchange_name, exchange_type='direct')
+        self.channel.queue_declare(queue=queue_name, durable=True)
         self.channel.queue_bind(
             exchange=self.exchange_name, queue=queue_name, routing_key="leilao_iniciado"
         )
@@ -19,7 +20,6 @@ class Cliente:
             queue=queue_name, on_message_callback=self.callback_leilao_iniciado, auto_ack=True
         )
 
-        self.channel.exchange_declare(exchange=self.exchange_name, exchange_type='direct')
 
     def callback(self, ch, method, properties, body):
         print(f" [x] {method.routing_key}:{body}")
@@ -33,7 +33,7 @@ class Cliente:
         if auction_queue not in self.subscribed_auctions:
             self.subscribed_auctions.append(auction_queue)
             queue_name = f"{auction_queue}_{self.name}"
-            self.channel.queue_declare(queue=queue_name)
+            self.channel.queue_declare(queue=queue_name, durable=True)
             self.channel.queue_bind(
                 exchange=self.exchange_name, queue=queue_name, routing_key=auction_queue
             )

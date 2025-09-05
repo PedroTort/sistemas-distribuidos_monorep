@@ -8,15 +8,15 @@ class Notification:
         cls.connection = connection
         cls.channel = channel
         cls.exchange_name = "leilao"
+        cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type='direct')
         for queue_name in ["lance_validado","leilao_vencedor"]:
-            cls.channel.queue_declare(queue=queue_name)
+            cls.channel.queue_declare(queue=queue_name, durable=True)
             cls.channel.queue_bind(
                 exchange=cls.exchange_name, queue=queue_name, routing_key=queue_name
             )
             cls.channel.basic_consume(
                 queue=queue_name, on_message_callback=cls.callback, auto_ack=True
             )
-        cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type='direct')
 
     @classmethod
     def callback(cls, ch, method, properties, body):
