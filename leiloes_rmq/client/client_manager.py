@@ -24,10 +24,8 @@ private_key_bytes = private_key.private_bytes(
 
 
 def listen_and_subscribe():
-    connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
-    channel = connection.channel()
     type_name = "listener"
-    client = Client(name, connection, channel, type_name)
+    client = Client(name, type_name)
     for auction in auctions:
         client.subscribe_to_auction(auction)
         time.sleep(1)
@@ -36,17 +34,13 @@ def listen_and_subscribe():
 
 
 def bid():
-    connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
-    channel = connection.channel()
     public_key = private_key.public_key()
     public_key_bytes = public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     type_name = "bidder"
-    client = Client(
-        name, connection, channel, type_name, private_key_bytes, public_key_bytes
-    )
+    client = Client(name, type_name, private_key_bytes, public_key_bytes)
     for auction in auctions:
         client.subscribe_to_auction(auction)
         time.sleep(1)

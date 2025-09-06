@@ -4,7 +4,7 @@ from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from leiloes_rmq.terminal_logger import Logger, TerminalColors
+from leiloes_rmq.terminal_logger import Logger, TerminalColors, MessageFormatter
 
 
 class Bid:
@@ -68,14 +68,16 @@ class Bid:
 
         new_bid = body_with_signature["body"]
         auction_id = new_bid["id_leilao"]
+        client = new_bid["cliente"]
+        bid_value = new_bid["valor_lance"]
+
         if auction_id in cls.active_auctions:
             current_bid = cls.auction_results[auction_id]
-            if new_bid["valor_lance"] > current_bid["valor_lance"]:
+            if bid_value > current_bid["valor_lance"]:
                 cls.auction_results[auction_id] = new_bid
                 cls.notify_valid_bid(new_bid)
-                Logger.bid_placed(
-                    f"Lance atualizado no leilão {auction_id}: Cliente {new_bid['cliente']} -> Valor {new_bid['valor_lance']}"
-                )
+                message = MessageFormatter.bid_validated(auction_id, client, bid_value)
+                Logger.bid_validated(message)
 
     @classmethod
     def handle_auction_started(cls, routing_key: str, body: str):
@@ -96,15 +98,6 @@ class Bid:
             routing_key="lance_validado",
             body=json.dumps(body),
         )
-        auction_id = body["id_leilao"]
-        client = body["cliente"]
-        bid_value = body["valor_lance"]
-
-        Logger.bid_validated(
-            f"Lance validado enviado para o leilão {auction_id}{TerminalColors.RESET}\n"
-            f"  Cliente: {TerminalColors.CYAN}{client}{TerminalColors.RESET}\n"
-            f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
-        )
 
     @classmethod
     def handle_auction_finished(cls, routing_key: str, body: str):
@@ -122,11 +115,8 @@ class Bid:
         if auction_id in cls.active_auctions:
             cls.active_auctions.remove(auction_id)
 
-        Logger.auction_ended(
-            f"Leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET} finalizado:\n"
-            f"  Vencedor: {TerminalColors.CYAN}{winner_name}{TerminalColors.RESET}\n"
-            f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
-        )
+        message = MessageFormatter.auction_ended(auction_id, winner_name, bid_value)
+        Logger.auction_ended(message)
 
     @classmethod
     def validate_signature(cls, signature: str, body: dict) -> None:

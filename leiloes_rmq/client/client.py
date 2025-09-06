@@ -4,25 +4,21 @@ import base64
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
-from leiloes_rmq.terminal_logger import Logger, TerminalColors
+from leiloes_rmq.terminal_logger import Logger, TerminalColors, MessageFormatter
 
 
 class Client:
     def __init__(
         self,
         name: str,
-        connection,
-        channel,
         type: str,
         private_key_bytes: bytes = None,
         public_key_bytes: dict = None,
     ):
-        # self.connection = pika.BlockingConnection(
-        #     pika.ConnectionParameters("localhost")
-        # )
-        # self.channel = self.connection.channel()
-        self.connection = connection
-        self.channel = channel
+        self.connection = pika.BlockingConnection(
+            pika.ConnectionParameters("localhost")
+        )
+        self.channel = self.connection.channel()
         self.name = name
         self.private_key_bytes = private_key_bytes
         self.exchange_name = "auction"
@@ -53,23 +49,27 @@ class Client:
         bid_value = body_json.get("valor_lance")
 
         if body_json.get("auction_winner_flag"):
-            Logger.auction_winner(
-                f"Resultado do leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET}:\n"
-                f"  Vencedor: {TerminalColors.CYAN}{client}{TerminalColors.RESET}\n"
-                f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
-            )
+            message = MessageFormatter.auction_winner(auction_id, client, bid_value)
+            Logger.auction_winner(message)
         else:
-            Logger.info(
-                f"Nova informação da {TerminalColors.BOLD}{method.routing_key}{TerminalColors.RESET} recebida:\n"
-                f"  Leilão: {TerminalColors.CYAN}{auction_id}{TerminalColors.RESET}\n"
-                f"  Cliente: {TerminalColors.MAGENTA}{client}{TerminalColors.RESET}\n"
-                f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
+            message = MessageFormatter.new_bid_notification(
+                method.routing_key, auction_id, client, bid_value
             )
+            Logger.info(message)
 
     def callback_auction_started(self, ch, method, properties, body):
-        body = json.loads(body)
-        if body["id_leilao"] in self.subscribed_auctions:
-            Logger.auction_started(f"Leilão {body['id_leilao']} iniciado!")
+        data = json.loads(body)
+        auction_id = data["id_leilao"]
+
+        if auction_id in self.subscribed_auctions:
+            description = data["description"]
+            start_time = data["start_time"]
+            end_time = data["end_time"]
+
+            message = MessageFormatter.auction_started(
+                auction_id, description, start_time, end_time
+            )
+            Logger.auction_started(message)
 
     def subscribe_to_auction(self, auction_queue: str):
         if auction_queue not in self.subscribed_auctions:
