@@ -3,24 +3,23 @@ import base64
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from Crypto.Signature import pkcs1_15
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
+from leiloes_rmq.terminal_logger import Logger, TerminalColors
 
 
-class Lance:
+class Bid:
     @classmethod
     def __init__(cls, connection: BlockingConnection, channel: BlockingChannel):
         cls.connection = connection
         cls.channel = channel
-        cls.exchange_name = "leilao"
+        cls.exchange_name = "auction"
         cls.subscribed_queues = ["lance_realizado", "leilao_finalizado", "create_user"]
         cls.active_auctions = []
         cls.auction_results = {}
         cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type="direct")
         cls.public_keys = {}
         cls.create_auction_start_queue()
+        Logger.info("Sistema de lances inicializado e pronto para receber eventos.")
 
     @classmethod
     def create_auction_start_queue(cls):
@@ -32,6 +31,7 @@ class Lance:
         cls.channel.basic_consume(
             queue=queue_name, on_message_callback=cls.callback, auto_ack=True
         )
+        Logger.info("Inscrito para receber notificações de leilões iniciados.")
 
     @classmethod
     def callback(cls, ch, method, properties, body):
@@ -43,67 +43,90 @@ class Lance:
                 "create_user": cls.handle_create_user,
             }
             callback_handler[method.routing_key](method.routing_key, body)
-
         except Exception as e:
-            print(f" [!] Error handling message: {e}")
+            Logger.error(
+                f"Erro ao processar mensagem da fila {method.routing_key}: {e}"
+            )
 
     @classmethod
     def handle_create_user(cls, routing_key: str, body: str):
         body = json.loads(body)
         user_id = body["user_id"]
         cls.public_keys[user_id] = body["public_key"]
+        Logger.info(f"Usuário cadastrado no sistema: {user_id}")
 
     @classmethod
     def handle_bid_made(cls, routing_key: str, body: str):
         body_with_signature = json.loads(body)
-
         try:
             signature = body_with_signature["signature"]
-            body = body_with_signature["body"]
-            cls.validate_signature(signature=signature, body=body)
+            body_content = body_with_signature["body"]
+            cls.validate_signature(signature=signature, body=body_content)
         except Exception as e:
+            Logger.error(f"Lance inválido ou assinatura incorreta: {e}")
             return
+
         new_bid = body_with_signature["body"]
-        if new_bid["id_leilao"] in cls.active_auctions:
-            current_bid = cls.auction_results[new_bid["id_leilao"]]
+        auction_id = new_bid["id_leilao"]
+        if auction_id in cls.active_auctions:
+            current_bid = cls.auction_results[auction_id]
             if new_bid["valor_lance"] > current_bid["valor_lance"]:
-                cls.auction_results[new_bid["id_leilao"]] = body
-                cls.notify_valid_bid(body)
+                cls.auction_results[auction_id] = new_bid
+                cls.notify_valid_bid(new_bid)
+                Logger.bid_placed(
+                    f"Lance atualizado no leilão {auction_id}: Cliente {new_bid['cliente']} -> Valor {new_bid['valor_lance']}"
+                )
 
     @classmethod
     def handle_auction_started(cls, routing_key: str, body: str):
         body = json.loads(body)
-        cls.active_auctions.append(body.get("id_leilao"))
-        cls.auction_results[body.get("id_leilao")] = {
-            "id_leilao": body.get("id_leilao"),
-            "cliente": "No bids placed",
+        auction_id = body.get("id_leilao")
+        cls.active_auctions.append(auction_id)
+        cls.auction_results[auction_id] = {
+            "id_leilao": auction_id,
+            "cliente": "Nenhum lance registrado",
             "valor_lance": 0,
         }
+        Logger.auction_started(f"Leilão {auction_id} iniciado e agora ativo!")
 
     @classmethod
     def notify_valid_bid(cls, body: dict):
-        print(f"\033[33m Notify Valid Function \n Body: {body}\033[0m")
         cls.channel.basic_publish(
             exchange=cls.exchange_name,
             routing_key="lance_validado",
             body=json.dumps(body),
         )
-        print(f" [x] lance_validado:{body}")
+        auction_id = body["id_leilao"]
+        client = body["cliente"]
+        bid_value = body["valor_lance"]
+
+        Logger.bid_validated(
+            f"Lance validado enviado para o leilão {auction_id}{TerminalColors.RESET}\n"
+            f"  Cliente: {TerminalColors.CYAN}{client}{TerminalColors.RESET}\n"
+            f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
+        )
 
     @classmethod
     def handle_auction_finished(cls, routing_key: str, body: str):
-
         body = json.loads(body)
-        queue_name = "leilao_vencedor"
-
-        result = cls.auction_results.get(body.get("id_leilao"))
+        auction_id = body.get("id_leilao")
+        winner = cls.auction_results.get(auction_id)
+        winner_name = winner["cliente"]
+        bid_value = winner["valor_lance"]
 
         cls.channel.basic_publish(
-            exchange=cls.exchange_name, routing_key=queue_name, body=json.dumps(result)
+            exchange=cls.exchange_name,
+            routing_key="leilao_vencedor",
+            body=json.dumps(winner),
         )
-        cls.active_auctions.remove(body.get("id_leilao"))
+        if auction_id in cls.active_auctions:
+            cls.active_auctions.remove(auction_id)
 
-        print(f" [x] Sent {routing_key}:{result}")
+        Logger.auction_ended(
+            f"Leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET} finalizado:\n"
+            f"  Vencedor: {TerminalColors.CYAN}{winner_name}{TerminalColors.RESET}\n"
+            f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
+        )
 
     @classmethod
     def validate_signature(cls, signature: str, body: dict) -> None:
@@ -113,9 +136,13 @@ class Lance:
         hash = SHA256.new(json.dumps(body, sort_keys=True).encode("utf-8"))
         try:
             pkcs1_15.new(public_key).verify(hash, bytes_signature)
-            print("The signature is valid.")
-        except ValueError as e:
-            print("The signature is not valid.")
+            Logger.info(
+                f"Assinatura válida do cliente {cliente} para o lance no leilão {body['id_leilao']}."
+            )
+        except ValueError:
+            Logger.error(
+                f"Assinatura inválida do cliente {cliente} para o lance no leilão {body['id_leilao']}."
+            )
 
     def subscribe_to_queues(self):
         for queue_name in self.subscribed_queues:
@@ -126,8 +153,9 @@ class Lance:
             self.channel.basic_consume(
                 queue=queue_name, on_message_callback=self.callback, auto_ack=True
             )
+        Logger.info("Inscrição completa em todas as filas de leilão.")
 
     def start_listening(self):
         self.subscribe_to_queues()
-        print(f"Is now listening to bids at auctions")
+        Logger.info("Sistema agora ouvindo todos os lances e eventos de leilão.")
         self.channel.start_consuming()

@@ -1,15 +1,15 @@
 import threading
-import pika
 import time
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
-from Crypto.PublicKey import RSA
+import pika
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from leiloes_rmq.cliente.cliente import Cliente
+from leiloes_rmq.terminal_logger import Logger
+from leiloes_rmq.client.client import Client
 
-name = input("Enter client name: ")
-auctions_input = input("Enter auctions to subscribe (comma separated): ")
+Logger.input_prompt("Nome do cliente:")
+name = input().strip()
+Logger.input_prompt("Leiloes para participar (separados por virgula):")
+auctions_input = input().lower()
 auctions = [a.strip() for a in auctions_input.split(",")]
 
 private_key = rsa.generate_private_key(
@@ -27,12 +27,12 @@ def listen_and_subscribe():
     connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
     channel = connection.channel()
     type_name = "listener"
-    cliente = Cliente(name, connection, channel, type_name)
+    client = Client(name, connection, channel, type_name)
     for auction in auctions:
-        cliente.subscribe_to_auction(auction)
+        client.subscribe_to_auction(auction)
         time.sleep(1)
 
-    cliente.start_listening()
+    client.start_listening()
 
 
 def bid():
@@ -44,22 +44,24 @@ def bid():
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     type_name = "bidder"
-    cliente = Cliente(
+    client = Client(
         name, connection, channel, type_name, private_key_bytes, public_key_bytes
     )
     for auction in auctions:
-        cliente.subscribe_to_auction(auction)
+        client.subscribe_to_auction(auction)
         time.sleep(1)
     while True:
-        auction = input("Enter auction name (or 'exit' to quit): ")
-        if auction.lower() == "exit":
-            break
-        amount = input("Enter bid amount (integer): ")
+        time.sleep(1)
+        Logger.input_prompt("Nome do leilão para fazer o lance:")
+        auction = input().lower()
+        Logger.input_prompt("Valor do lance (número):")
+        amount = input()
+        # amount = input("Valor do lance (número): ")
         try:
             amount = int(amount)
-            cliente.bid_to_auction(auction, amount)
+            client.bid_to_auction(auction, amount)
         except ValueError:
-            print("Invalid amount. Please enter a number.")
+            Logger.error("Valor inválido. Por favor, digite um número.")
 
 
 listen_thread = threading.Thread(target=listen_and_subscribe)
