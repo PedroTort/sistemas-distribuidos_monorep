@@ -9,9 +9,6 @@ Este projeto é parte da disciplina de Sistemas Distribuídos e utiliza Python p
 docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4-management
 ```
 
-```bash
-python ./leiloes_rmq/fila_builder.py
-```
 
 ```bash
 python ./leiloes_rmq/ms_leilao/leilao_manager.py

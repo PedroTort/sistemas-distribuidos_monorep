@@ -18,4 +18,4 @@ def create_queue(channel_intance, queue_name: str, durable: bool):
     channel_intance.queue_declare(queue=queue_name, durable=durable)
 
 for queue in QueueNames:
-    create_queue(channel, queue.value, False)
+    create_queue(channel, queue.value, True)

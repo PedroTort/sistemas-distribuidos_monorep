@@ -1,5 +1,11 @@
 import json
-
+import base64
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from Crypto.Signature import pkcs1_15
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
 class Lance:
@@ -8,11 +14,16 @@ class Lance:
         cls.connection = connection
         cls.channel = channel
         cls.exchange_name = "leilao"
-        cls.subscribed_queues = ["lance_realizado", "leilao_finalizado"]
+        cls.subscribed_queues = ["lance_realizado", "leilao_finalizado", "create_user"]
         cls.active_auctions = []
         cls.auction_results = {}
-        queue_name = f"leilao_iniciado_lance"
         cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type='direct')
+        cls.public_keys = {}
+        cls.create_auction_start_queue()
+
+    @classmethod
+    def create_auction_start_queue(cls):
+        queue_name = "leilao_iniciado_lance"
         cls.channel.queue_declare(queue=queue_name, durable=True)
         cls.channel.queue_bind(
             exchange=cls.exchange_name, queue=queue_name, routing_key="leilao_iniciado"
@@ -27,7 +38,8 @@ class Lance:
             callback_handler = {
                 "lance_realizado": cls.handle_bid_made,
                 "leilao_iniciado": cls.handle_auction_started,
-                "leilao_finalizado": cls.handle_auction_finished
+                "leilao_finalizado": cls.handle_auction_finished,
+                "create_user": cls.handle_create_user,
             }
             callback_handler[method.routing_key](method.routing_key, body)
 
@@ -35,8 +47,22 @@ class Lance:
             print(f" [!] Error handling message: {e}")
 
     @classmethod
+    def handle_create_user(cls, routing_key: str, body: str):
+        body = json.loads(body)
+        user_id = body["user_id"]
+        cls.public_keys[user_id] = body["public_key"]
+
+    @classmethod
     def handle_bid_made(cls, routing_key: str, body: str):
-        new_bid = json.loads(body)
+        body_with_signature = json.loads(body)
+        try:
+            signature = body_with_signature["signature"]
+            body = body_with_signature["body"]
+            cls.validate_signature(signature=signature, body=body)
+        except Exception as e:
+            return
+
+        new_bid = body_with_signature["body"]
         if new_bid["id_leilao"] in cls.active_auctions:
             current_bid = cls.auction_results[new_bid["id_leilao"]]
             if new_bid["valor_lance"] > current_bid["valor_lance"]:
@@ -75,6 +101,18 @@ class Lance:
             exchange=exchange_name, routing_key=queue_name, body=json.dumps(result)
         )
         print(f" [x] Sent {routing_key}:{result}")
+
+    @classmethod
+    def validate_signature(cls, signature: str, body: dict) -> None:
+        cliente = body["cliente"]
+        bytes_signature = base64.b64decode(signature)
+        public_key = RSA.import_key(cls.public_keys[cliente])
+        hash = SHA256.new(json.dumps(body, sort_keys=True).encode("utf-8"))
+        try:
+            pkcs1_15.new(public_key).verify(hash, bytes_signature)
+            print("The signature is valid.")
+        except (ValueError) as e:
+            print("The signature is not valid.")
 
     def subscribe_to_queues(self):
         for queue_name in self.subscribed_queues:

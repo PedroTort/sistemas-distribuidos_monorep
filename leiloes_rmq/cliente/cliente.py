@@ -1,15 +1,20 @@
 import json
-
+import base64
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
 class Cliente:
-    def __init__(self, name: str, connection: BlockingConnection, channel: BlockingChannel):
+    def __init__(self, name: str, connection: BlockingConnection, channel: BlockingChannel, private_key_bytes: bytes=None, public_key_bytes: dict=None):
         self.name = name
+        self.private_key_bytes = private_key_bytes
         self.connection = connection
         self.channel = channel
         self.exchange_name = "leilao"
         self.subscribed_auctions = []
-
         queue_name = f"leilao_iniciado_{self.name}"
         self.channel.exchange_declare(exchange=self.exchange_name, exchange_type='direct')
         self.channel.queue_declare(queue=queue_name, durable=True)
@@ -19,6 +24,14 @@ class Cliente:
         self.channel.basic_consume(
             queue=queue_name, on_message_callback=self.callback_leilao_iniciado, auto_ack=True
         )
+        if public_key_bytes is not None:
+            public_key_dict = {
+                "user_id": self.name,
+                "public_key": public_key_bytes.decode('utf-8'),
+            }
+            self.channel.basic_publish(
+                exchange=self.exchange_name, routing_key="create_user", body=json.dumps(public_key_dict, sort_keys=True)
+            )
 
 
     def callback(self, ch, method, properties, body):
@@ -48,8 +61,15 @@ class Cliente:
                 "cliente": self.name,
                 "valor_lance": bid_value
             }
+            private_key = RSA.import_key(self.private_key_bytes)
+            hash = SHA256.new(json.dumps(body, sort_keys=True).encode('utf-8'))
+            signature = pkcs1_15.new(private_key).sign(hash)
+            body_with_signature = {
+                "body": body,
+                "signature": base64.b64encode(signature).decode("utf-8")
+            }
             self.channel.basic_publish(
-                exchange=self.exchange_name, routing_key="lance_realizado" , body=json.dumps(body)
+                exchange=self.exchange_name, routing_key="lance_realizado" , body=json.dumps(body_with_signature)
             )
             print(f" [x] {self.name} bid {bid_value} to {auction_queue}")
         else:
