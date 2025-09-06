@@ -10,7 +10,7 @@ from leiloes_rmq.cliente.cliente import Cliente
 
 name = input("Enter client name: ")
 auctions_input = input("Enter auctions to subscribe (comma separated): ")
-auctions = [a.strip() for a in auctions_input.split(",") if a.strip()]
+auctions = [a.strip() for a in auctions_input.split(",")]
 
 private_key = rsa.generate_private_key(
     public_exponent=65537,
@@ -19,17 +19,21 @@ private_key = rsa.generate_private_key(
 private_key_bytes = private_key.private_bytes(
     encoding=serialization.Encoding.PEM,
     format=serialization.PrivateFormat.PKCS8,
-    encryption_algorithm=serialization.NoEncryption()
+    encryption_algorithm=serialization.NoEncryption(),
 )
 
 
 def listen_and_subscribe():
     connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
     channel = connection.channel()
-    cliente = Cliente(name, connection, channel)
+    type_name = "listener"
+    cliente = Cliente(name, connection, channel, type_name)
     for auction in auctions:
         cliente.subscribe_to_auction(auction)
+        time.sleep(1)
+
     cliente.start_listening()
+
 
 def bid():
     connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
@@ -37,12 +41,15 @@ def bid():
     public_key = private_key.public_key()
     public_key_bytes = public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
-
-    cliente = Cliente(name, connection, channel, private_key_bytes, public_key_bytes)
+    type_name = "bidder"
+    cliente = Cliente(
+        name, connection, channel, type_name, private_key_bytes, public_key_bytes
+    )
     for auction in auctions:
         cliente.subscribe_to_auction(auction)
+        time.sleep(1)
     while True:
         auction = input("Enter auction name (or 'exit' to quit): ")
         if auction.lower() == "exit":
@@ -53,6 +60,7 @@ def bid():
             cliente.bid_to_auction(auction, amount)
         except ValueError:
             print("Invalid amount. Please enter a number.")
+
 
 listen_thread = threading.Thread(target=listen_and_subscribe)
 bid_thread = threading.Thread(target=bid)
