@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "hello_world"
+name = "leiloes_rmq"
 version = "0.1.0"
 description = "Microservices auction system using RabbitMQ"
 authors = ["Eduardo Soviersovski",  "Pedro Tortola"]
 readme = "README.md"
-packages = [{ include = "hello_world" }]
+packages = [{ include = "leiloes_rmq" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
