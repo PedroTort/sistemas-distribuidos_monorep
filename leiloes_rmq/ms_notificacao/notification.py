@@ -1,6 +1,6 @@
 import json
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from leiloes_rmq.terminal_logger import Logger, TerminalColors
+from terminal_logger import Logger, TerminalColors
 
 
 class Notification:

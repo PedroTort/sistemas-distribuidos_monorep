@@ -1,10 +1,9 @@
 import threading
 import time
-import pika
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from leiloes_rmq.terminal_logger import Logger
-from leiloes_rmq.client.client import Client
+from terminal_logger import Logger
+from client import Client
 
 Logger.input_prompt("Nome do cliente:")
 name = input().strip()

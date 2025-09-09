@@ -1,6 +1,6 @@
 import threading
-from leiloes_rmq.ms_leilao.auction import Auction
-from leiloes_rmq.terminal_logger import Logger
+from ms_leilao.auction import Auction
+from terminal_logger import Logger
 
 DEFAULT_DURATION = 30
 

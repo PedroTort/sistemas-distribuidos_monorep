@@ -1,6 +1,6 @@
 import pika
 
-from leiloes_rmq.ms_notificacao.notification import Notification
+from ms_notificacao.notification import Notification
 
 connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
 channel = connection.channel()

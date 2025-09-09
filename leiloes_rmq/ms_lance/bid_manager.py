@@ -1,5 +1,5 @@
 import pika
-from leiloes_rmq.ms_lance.bid import Bid
+from ms_lance.bid import Bid
 
 connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
 channel = connection.channel()

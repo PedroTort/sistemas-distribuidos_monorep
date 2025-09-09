@@ -4,7 +4,7 @@ from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from leiloes_rmq.terminal_logger import Logger, TerminalColors, MessageFormatter
+from terminal_logger import Logger, TerminalColors, MessageFormatter
 
 
 class Bid:

@@ -4,7 +4,7 @@ import base64
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
-from leiloes_rmq.terminal_logger import Logger, TerminalColors, MessageFormatter
+from terminal_logger import Logger, MessageFormatter
 
 
 class Client:

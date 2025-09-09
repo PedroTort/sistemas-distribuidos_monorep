@@ -2,7 +2,7 @@ import pika
 import time
 import json
 from datetime import datetime, timedelta
-from leiloes_rmq.terminal_logger import Logger
+from terminal_logger import Logger
 
 
 class Auction:
