@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "pyro"
+version = "0.1.0"
+description = "Pyro"
+authors = ["Eduardo Soviersovski",  "Pedro Tortola"]
+readme = "README.md"
+packages = [{ include = "*" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pyro5 = "^5.15"
+
+
+[build-system]
+requires = ["poetry-core>=1.4.0"]
+build-backend = "poetry.core.masonry.api"
