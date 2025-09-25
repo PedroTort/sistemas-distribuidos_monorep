@@ -5,13 +5,20 @@ import Pyro5.errors
 import Pyro5.server
 
 class Peer:
-    def __init__(self, name: str, peer_names: list[str]):
+    def __init__(self, name: str):
+        self.PEER_NAMES = ["PeerA", "PeerB", "PeerC", "PeerD"]
         self.name = name
         self.proxies = {}
         self.state = "IDLE"
-        self.peer_names = peer_names
+        self.daemon = Pyro5.server.Daemon()
         self.ns = self.setup_name_server()
+        self.register_object()
         print(f"[{self.name}] Objeto Peer criado.")
+
+
+    def register_object(self):
+        register_uri = self.daemon.register(self, objectId=f"{self.name}")
+        self.ns.register(self.name, register_uri)
 
     @staticmethod
     def setup_name_server():
@@ -21,12 +28,11 @@ class Peer:
             try:
                 ns = Pyro5.api.locate_ns("localhost", 9090)
                 print("Servidor de Nomes encontrado!")
-            except Exception:
+            except Exception as e:
                 print("Servidor de Nomes não encontrado.")
-                ns = Pyro5.api.start_ns(host="localhost")
+                ns = Pyro5.api.start_ns(host="localhost", port=9090)
                 print("Servidor de nomes criado")
                 time.sleep(5)
-        print("bb")
         return ns
 
     @Pyro5.api.expose
@@ -41,13 +47,12 @@ class Peer:
 
     def find_other_peers(self):
         print(f"[{self.name}] Procurando outros peers...")
-        for name in self.peer_names:
+        for name in self.PEER_NAMES:
             if name == self.name:
                 continue
-            while name not in self.proxies:
+            while name not in self.proxies.keys():
                 try:
-
-                    uri = self.ns.lookup(name)
+                    uri = self.ns.lookup(f"{name}")
                     self.proxies[name] = Pyro5.api.Proxy(uri)
                     print(f"[{self.name}] Encontrou {name}!")
                 except Pyro5.errors.NamingError:
@@ -64,3 +69,6 @@ class Peer:
             except Exception as e:
                 print(f"[{self.name}] Erro ao pingar {name}: {e}")
         print(f"[{self.name}] === FIM DO TESTE DE PING ===\n")
+
+    def request_loop(self):
+        self.daemon.requestLoop()
