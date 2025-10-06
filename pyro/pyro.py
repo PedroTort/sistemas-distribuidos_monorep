@@ -1,4 +1,4 @@
-# trab2_peer_pyro5.py
+# trab2_peer_final.py
 
 import sys
 import threading
@@ -7,78 +7,69 @@ import Pyro5.api
 import Pyro5.errors
 from collections import deque
 
-# --- Constantes de Configuração ---
-PEER_NAMES = ["PeerA", "PeerB"]
+# --- Constantes de Configuração (sem alterações) ---
 # PEER_NAMES = ["PeerA", "PeerB", "PeerC", "PeerD"]
+PEER_NAMES = ["PeerA", "PeerB"]
 HEARTBEAT_INTERVAL = 2
 HEARTBEAT_TIMEOUT = 5
 REQUEST_TIMEOUT = 5
 SC_ACCESS_TIME = 10
 
 
-# @Pyro5.api.behavior(instance_mode="single")
+@Pyro5.api.behavior(instance_mode="single")
 class Peer:
     def __init__(self, name):
         self.name = name
         self.state = "RELEASED"
         self.request_timestamp = None
-        self.proxies = {}
+        self.peers = {}  # Dicionário que armazenará os proxies dos outros peers
         self.pending_replies = set()
         self.deferred_requests = deque()
         self.last_heartbeat = {
             peer: time.time() for peer in PEER_NAMES if peer != self.name
         }
         self.lock = threading.Lock()
-        self.ns = None
-        print(f"[{self.name}] Inicializado. Estado: {self.state}")
+        print(f"[{self.name}] Inicializado. Estado: RELEASED")
 
     def start(self):
-        self._connect_to_nameserver()
-        self.find_other_peers()
+        self._connect_to_peers()
+
         threading.Thread(target=self._heartbeat_sender, daemon=True).start()
         threading.Thread(target=self._failure_detector, daemon=True).start()
         print(f"[{self.name}] Threads de background iniciadas.")
 
-    def _connect_to_nameserver(self):
-        while True:
-            try:
-                self.ns = Pyro5.api.locate_ns()
-                print(f"[{self.name}] Conectado ao Name Server.")
-                break
-            except Pyro5.errors.NamingError:
-                print(
-                    f"[{self.name}] Não encontrou o Name Server. Tentando novamente em 3s..."
-                )
-                time.sleep(3)
-
-    def find_other_peers(self):
+    def _connect_to_peers(self):
         print(f"[{self.name}] Procurando outros peers...")
+        ns = Pyro5.api.locate_ns()
+
         for peer_name in PEER_NAMES:
             if peer_name == self.name:
                 continue
-            while peer_name not in self.proxies.keys():
+
+            while peer_name not in self.peers:
                 try:
-                    uri = self.ns.lookup(peer_name)
-                    self.proxies[peer_name] = Pyro5.api.Proxy(uri)
-                    print(f"[{self.name}] Encontrou {peer_name}!")
+                    uri = ns.lookup(peer_name)
+                    self.peers[peer_name] = Pyro5.api.Proxy(uri)
+                    print(f"[{self.name}] Conectado a {peer_name}!")
                 except Pyro5.errors.NamingError:
                     print(
                         f"[{self.name}] ...ainda não encontrou {peer_name}. Tentando em 3s."
                     )
                     time.sleep(3)
+
         print(f"[{self.name}] Conectado a todos os peers!")
 
-    # --- Operações principais ---
     @Pyro5.api.expose
     def request_access(self, sender_name, timestamp):
         with self.lock:
             should_defer = self.state == "HELD" or (
-                self.state == "WANTED" and self.request_timestamp < timestamp
+                self.state == "WANTED"
+                and (self.request_timestamp, self.name) < (timestamp, sender_name)
             )
             if should_defer:
                 self.deferred_requests.append(sender_name)
             else:
-                self.proxies[sender_name].receive_reply(self.name)
+                self.peers[sender_name].receive_reply(self.name)
         return "OK"
 
     @Pyro5.api.expose
@@ -92,13 +83,12 @@ class Peer:
 
     @Pyro5.api.expose
     def receive_heartbeat(self, sender_name):
-        print(f"[{self.name}] Recebeu heartbeat de {sender_name}.")
+        print(f"[{self.name}] Heartbeat recebido de {sender_name}.")
         with self.lock:
             if sender_name in self.last_heartbeat:
                 self.last_heartbeat[sender_name] = time.time()
         return "OK"
 
-    # --- Seção Crítica ---
     def try_to_enter_sc(self):
         with self.lock:
             if self.state != "RELEASED":
@@ -107,19 +97,17 @@ class Peer:
             print(f"[{self.name}] Quer entrar na Seção Crítica...")
             self.state = "WANTED"
             self.request_timestamp = time.time()
-            self.pending_replies = set(self.proxies.keys())
+            self.pending_replies = set(self.peers.keys())
             if not self.pending_replies:
                 self._enter_critical_section()
                 return
-
-        for name, proxy in list(self.proxies.items()):
+        for name, proxy in list(self.peers.items()):
             try:
                 proxy._pyro_timeout = REQUEST_TIMEOUT
                 proxy.request_access(self.name, self.request_timestamp)
             except Exception as e:
                 print(f"[{self.name}] FALHA ao enviar pedido para {name}: {e}")
                 self._handle_failed_peer(name)
-
         with self.lock:
             if not self.pending_replies and self.state == "WANTED":
                 self._enter_critical_section()
@@ -140,19 +128,22 @@ class Peer:
             while self.deferred_requests:
                 peer_name = self.deferred_requests.popleft()
                 try:
-                    if peer_name in self.proxies:
-                        self.proxies[peer_name].receive_reply(self.name)
-                except Exception as e:
+                    if peer_name in self.peers:
+                        self.peers[peer_name].receive_reply(self.name)
+                except Exception:
                     self._handle_failed_peer(peer_name)
 
     def _heartbeat_sender(self):
         while True:
             time.sleep(HEARTBEAT_INTERVAL)
-            for name, proxy in list(self.proxies.items()):
+            print(f"lista de peers: {list(self.peers.keys())}")
+            for name, proxy in list(self.peers.items()):
+                print(f"[{self.name}] Enviando heartbeat para {name}.")
                 try:
-                    print(f"[{self.name}] Enviando heartbeat para {name}.")
+                    proxy._pyroClaimOwnership()
                     proxy.receive_heartbeat(self.name)
-                except Exception:
+                except Exception as e:
+                    print(f"[{self.name}] FALHA ao enviar heartbeat para {name}: {e}")
                     pass
 
     def _failure_detector(self):
@@ -160,8 +151,9 @@ class Peer:
             time.sleep(HEARTBEAT_TIMEOUT)
             now = time.time()
             for name, last_seen in list(self.last_heartbeat.items()):
+                print(f"[{self.name}] Verificando heartbeat de {name}.")
                 if now - last_seen > HEARTBEAT_TIMEOUT:
-                    if name in self.proxies:
+                    if name in self.peers:
                         print(
                             f"\n!!! [{self.name}] TIMEOUT DE HEARTBEAT: {name} considerado FALHO. !!!\n"
                         )
@@ -169,8 +161,8 @@ class Peer:
 
     def _handle_failed_peer(self, peer_name):
         with self.lock:
-            if peer_name in self.proxies:
-                del self.proxies[peer_name]
+            if peer_name in self.peers:
+                del self.peers[peer_name]
             if peer_name in self.last_heartbeat:
                 del self.last_heartbeat[peer_name]
             if peer_name in self.pending_replies:
@@ -195,28 +187,26 @@ def main():
     uri = daemon.register(peer)
     ns.register(peer_name, uri)
     print(f"[{peer_name}] Registrado no PyRO. URI: {uri}")
+
+    daemon_thread = threading.Thread(target=daemon.requestLoop, daemon=True)
+    daemon_thread.start()
+
     peer.start()
 
-    def user_interface():
-        while True:
-            try:
-                cmd = (
-                    input("Digite 'req' para solicitar a SC ou 'exit' para sair:\n> ")
-                    .strip()
-                    .lower()
-                )
-                if cmd == "req":
-                    peer.try_to_enter_sc()
-                elif cmd == "exit":
-                    break
-            except (EOFError, KeyboardInterrupt):
-                break
-
-    threading.Thread(target=user_interface, daemon=True).start()
     print(f"[{peer_name}] Pronto para receber chamadas e comandos.")
-
     try:
-        daemon.requestLoop()
+        while True:
+            cmd = (
+                input("Digite 'req' para solicitar a SC ou 'exit' para sair:\n> ")
+                .strip()
+                .lower()
+            )
+            if cmd == "req":
+                peer.try_to_enter_sc()
+            elif cmd == "exit":
+                break
+    except (EOFError, KeyboardInterrupt):
+        pass
     finally:
         print(f"[{peer_name}] Encerrando e removendo registro do Name Server.")
         ns.remove(peer_name)
