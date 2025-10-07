@@ -1,38 +1,27 @@
-# Trab-1 - Distribuídos
+# Trab-2 - Distribuídos
 
 ## Descrição
-Este projeto é parte da disciplina de Sistemas Distribuídos e utiliza Python para implementar funcionalidades com mensageria, transferência de arquivos e outras tarefas relacionadas ao trabalho acadêmico.
+Este projeto é parte da disciplina de Sistemas Distribuídos e utiliza Pyro para simular uma arquitetura de processos pares 
 
-## Docker
-
-Siga a seguinte ordem dos comandos para a execução correta do fluxo
+Siga a seguinte ordem dos comandos, em terminais diferentes, para a execução correta do fluxo
 
 ```bash
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4-management
+pyro5-ns
 ```
-
-Para iniciar o bid manager
 
 ```bash
-python ./ms_lance/bid_manager.py
+python pyro.py PeerA
 ```
-
-Para iniciar o notification manager
 
 ```bash
-python ./ms_notificacao/notification_manager.py
+python pyro.py PeerB
 ```
-
-Para cada usuário que dará lances:
 
 ```bash
-python ./client/client_manager.py
+python pyro.py PeerC
 ```
-Para iniciar os leiloes
 
 ```bash
-python ./ms_leilao/auction_manager.py
+python pyro.py PeerD
 ```
 
-
----

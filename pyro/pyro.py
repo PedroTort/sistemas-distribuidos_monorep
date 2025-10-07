@@ -12,7 +12,6 @@ REQUEST_TIMEOUT = 5
 SC_ACCESS_TIME = 10
 
 
-@Pyro5.api.behavior(instance_mode="single")
 class Peer:
     def __init__(self, name):
         self.name = name
@@ -70,7 +69,7 @@ class Peer:
         if peer_to_reply_to:
             try:
                 print(
-                    f"[{self.name}] Lock released. Sending reply to {peer_to_reply_to}."
+                    f"[{self.name}] Lock liberado. Enviando resposta para {peer_to_reply_to}."
                 )
                 proxy = self.peers[peer_to_reply_to]
                 proxy._pyroClaimOwnership()
