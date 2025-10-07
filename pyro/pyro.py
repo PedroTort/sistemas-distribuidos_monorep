@@ -69,12 +69,16 @@ class Peer:
                 peer_to_reply_to = sender_name
         if peer_to_reply_to:
             try:
-                print(f"[{self.name}] Lock released. Sending reply to {peer_to_reply_to}.")
+                print(
+                    f"[{self.name}] Lock released. Sending reply to {peer_to_reply_to}."
+                )
                 proxy = self.peers[peer_to_reply_to]
                 proxy._pyroClaimOwnership()
                 proxy.receive_reply(self.name)
             except Exception as e:
-                print(f"[{self.name}] FALHA ao enviar reply para {peer_to_reply_to}: {e}")
+                print(
+                    f"[{self.name}] FALHA ao enviar reply para {peer_to_reply_to}: {e}"
+                )
                 self._handle_failed_peer(peer_to_reply_to)
         return "OK"
 
@@ -161,7 +165,9 @@ class Peer:
             for name, last_seen in list(self.last_heartbeat.items()):
                 if now - last_seen > HEARTBEAT_TIMEOUT:
                     if name in self.peers:
-                        print(f"\n!!! [{self.name}] TIMEOUT DE HEARTBEAT: {name} considerado FALHO. !!!\n")
+                        print(
+                            f"\n!!! [{self.name}] TIMEOUT DE HEARTBEAT: {name} considerado FALHO. !!!\n"
+                        )
                         self._handle_failed_peer(name)
 
     def _handle_failed_peer(self, peer_name):
@@ -177,6 +183,21 @@ class Peer:
             self.deferred_requests = deque(
                 [p for p in self.deferred_requests if p != peer_name]
             )
+
+    def list_all_peers(self):
+        with self.lock:
+            print(f"[{self.name}] Peers conhecidos: {list(self.peers.keys())}")
+            return list(self.peers.keys())
+
+    def force_release_sc(self):
+        with self.lock:
+            if self.state != "HELD":
+                print(f"{self.name} não está na seção crítica.")
+                return
+
+            print(f"{self.name} forçando liberação da seção crítica.")
+
+        self._release_sc()
 
 
 def main():
@@ -202,14 +223,28 @@ def main():
     try:
         while True:
             cmd = (
-                input("Digite 'req' para solicitar a SC ou 'exit' para sair:\n> ")
+                input(
+                    "\n=== Menu de Comandos ===\n"
+                    "1. req     - Solicitar entrada na SC\n"
+                    "2. list    - Listar todos os peers\n"
+                    "3. release - Liberar a SC (forçar)\n"
+                    "4. exit    - Sair do programa\n"
+                    "> "
+                )
                 .strip()
                 .lower()
             )
-            if cmd == "req":
+
+            if cmd in ["1", "req"]:
                 peer.try_to_enter_sc()
-            elif cmd == "exit":
+            elif cmd in ["2", "list"]:
+                peer.list_all_peers()
+            elif cmd in ["3", "release"]:
+                peer.force_release_sc()
+            elif cmd in ["4", "exit"]:
                 break
+            else:
+                print("Opção inválida. Digite novamente.")
     except (EOFError, KeyboardInterrupt):
         pass
     finally:
