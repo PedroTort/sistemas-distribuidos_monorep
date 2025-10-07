@@ -1,18 +1,13 @@
-# trab2_peer_final.py
-
 import sys
 import threading
 import time
 import Pyro5.api
 import Pyro5.errors
 from collections import deque
-from apscheduler.schedulers.background import BackgroundScheduler
 
-# --- Constantes de Configuração (sem alterações) ---
-# PEER_NAMES = ["PeerA", "PeerB", "PeerC", "PeerD"]
-PEER_NAMES = ["PeerA", "PeerB"]
+PEER_NAMES = ["PeerA", "PeerB", "PeerC", "PeerD"]
 HEARTBEAT_INTERVAL = 2
-HEARTBEAT_TIMEOUT = 5
+HEARTBEAT_TIMEOUT = 6
 REQUEST_TIMEOUT = 5
 SC_ACCESS_TIME = 10
 
@@ -151,9 +146,7 @@ class Peer:
     def _heartbeat_sender(self):
         while True:
             time.sleep(HEARTBEAT_INTERVAL)
-            print(f"lista de peers: {list(self.peers.keys())}")
             for name, proxy in list(self.peers.items()):
-                print(f"[{self.name}] Enviando heartbeat para {name}.")
                 try:
                     proxy._pyroClaimOwnership()
                     proxy.receive_heartbeat(self.name)
