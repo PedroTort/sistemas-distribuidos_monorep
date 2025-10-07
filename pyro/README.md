@@ -3,6 +3,12 @@
 ## Descrição
 Este projeto é parte da disciplina de Sistemas Distribuídos e utiliza Pyro para simular uma arquitetura de processos pares 
 
+Para instalar as dependencias necessarias:
+
+```bash
+poetry install && poetry shell
+```
+
 Siga a seguinte ordem dos comandos, em terminais diferentes, para a execução correta do fluxo
 
 ```bash
