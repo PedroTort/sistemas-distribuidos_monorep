@@ -6,6 +6,7 @@ import time
 import Pyro5.api
 import Pyro5.errors
 from collections import deque
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- Constantes de Configuração (sem alterações) ---
 # PEER_NAMES = ["PeerA", "PeerB", "PeerC", "PeerD"]
@@ -22,7 +23,7 @@ class Peer:
         self.name = name
         self.state = "RELEASED"
         self.request_timestamp = None
-        self.peers = {}  # Dicionário que armazenará os proxies dos outros peers
+        self.peers = {}
         self.pending_replies = set()
         self.deferred_requests = deque()
         self.last_heartbeat = {
@@ -61,6 +62,7 @@ class Peer:
 
     @Pyro5.api.expose
     def request_access(self, sender_name, timestamp):
+        peer_to_reply_to = None
         with self.lock:
             should_defer = self.state == "HELD" or (
                 self.state == "WANTED"
@@ -69,10 +71,20 @@ class Peer:
             if should_defer:
                 self.deferred_requests.append(sender_name)
             else:
-                self.peers[sender_name].receive_reply(self.name)
+                peer_to_reply_to = sender_name
+        if peer_to_reply_to:
+            try:
+                print(f"[{self.name}] Lock released. Sending reply to {peer_to_reply_to}.")
+                proxy = self.peers[peer_to_reply_to]
+                proxy._pyroClaimOwnership()
+                proxy.receive_reply(self.name)
+            except Exception as e:
+                print(f"[{self.name}] FALHA ao enviar reply para {peer_to_reply_to}: {e}")
+                self._handle_failed_peer(peer_to_reply_to)
         return "OK"
 
     @Pyro5.api.expose
+    @Pyro5.api.oneway
     def receive_reply(self, sender_name):
         with self.lock:
             if sender_name in self.pending_replies:
@@ -82,8 +94,8 @@ class Peer:
         return "OK"
 
     @Pyro5.api.expose
+    @Pyro5.api.oneway
     def receive_heartbeat(self, sender_name):
-        print(f"[{self.name}] Heartbeat recebido de {sender_name}.")
         with self.lock:
             if sender_name in self.last_heartbeat:
                 self.last_heartbeat[sender_name] = time.time()
@@ -103,7 +115,8 @@ class Peer:
                 return
         for name, proxy in list(self.peers.items()):
             try:
-                proxy._pyro_timeout = REQUEST_TIMEOUT
+                proxy._pyroClaimOwnership()
+                proxy._pyroTimeout = REQUEST_TIMEOUT
                 proxy.request_access(self.name, self.request_timestamp)
             except Exception as e:
                 print(f"[{self.name}] FALHA ao enviar pedido para {name}: {e}")
@@ -129,8 +142,10 @@ class Peer:
                 peer_name = self.deferred_requests.popleft()
                 try:
                     if peer_name in self.peers:
+                        proxy = self.peers[peer_name]
+                        proxy._pyroClaimOwnership()
                         self.peers[peer_name].receive_reply(self.name)
-                except Exception:
+                except Exception as e:
                     self._handle_failed_peer(peer_name)
 
     def _heartbeat_sender(self):
@@ -151,12 +166,9 @@ class Peer:
             time.sleep(HEARTBEAT_TIMEOUT)
             now = time.time()
             for name, last_seen in list(self.last_heartbeat.items()):
-                print(f"[{self.name}] Verificando heartbeat de {name}.")
                 if now - last_seen > HEARTBEAT_TIMEOUT:
                     if name in self.peers:
-                        print(
-                            f"\n!!! [{self.name}] TIMEOUT DE HEARTBEAT: {name} considerado FALHO. !!!\n"
-                        )
+                        print(f"\n!!! [{self.name}] TIMEOUT DE HEARTBEAT: {name} considerado FALHO. !!!\n")
                         self._handle_failed_peer(name)
 
     def _handle_failed_peer(self, peer_name):
