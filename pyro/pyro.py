@@ -56,7 +56,6 @@ class Peer:
 
     @Pyro5.api.expose
     def request_access(self, sender_name, timestamp):
-        peer_to_reply_to = None
         with self.lock:
             should_defer = self.state == "HELD" or (
                 self.state == "WANTED"
@@ -64,22 +63,8 @@ class Peer:
             )
             if should_defer:
                 self.deferred_requests.append(sender_name)
-            else:
-                peer_to_reply_to = sender_name
-        if peer_to_reply_to:
-            try:
-                print(
-                    f"[{self.name}] Lock liberado. Enviando resposta para {peer_to_reply_to}."
-                )
-                proxy = self.peers[peer_to_reply_to]
-                proxy._pyroClaimOwnership()
-                proxy.receive_reply(self.name)
-            except Exception as e:
-                print(
-                    f"[{self.name}] FALHA ao enviar reply para {peer_to_reply_to}: {e}"
-                )
-                self._handle_failed_peer(peer_to_reply_to)
-        return "OK"
+                return False
+        return True
 
     @Pyro5.api.expose
     @Pyro5.api.oneway
@@ -87,9 +72,10 @@ class Peer:
         with self.lock:
             if sender_name in self.pending_replies:
                 self.pending_replies.remove(sender_name)
+                print(f"[{self.name}] Acesso liberado por {sender_name}")
             if not self.pending_replies and self.state == "WANTED":
                 self._enter_critical_section()
-        return "OK"
+        return True
 
     @Pyro5.api.expose
     @Pyro5.api.oneway
@@ -111,11 +97,15 @@ class Peer:
             if not self.pending_replies:
                 self._enter_critical_section()
                 return
-        for name, proxy in list(self.peers.items()):
+        for name, pro_obj in list(self.peers.items()):
             try:
-                proxy._pyroClaimOwnership()
-                proxy._pyroTimeout = REQUEST_TIMEOUT
-                proxy.request_access(self.name, self.request_timestamp)
+                with Pyro5.api.Proxy(pro_obj._pyroUri) as proxy:
+                    proxy._pyroTimeout = REQUEST_TIMEOUT
+                    if proxy.request_access(self.name, self.request_timestamp):
+                        self.pending_replies.remove(name)
+                        print( f"[{self.name}] Acesso liberado por {name}")
+                    else:
+                        print(f"[{self.name}] Acesso negado por {name}. Pedido adiado.")
             except Exception as e:
                 print(f"[{self.name}] FALHA ao enviar pedido para {name}: {e}")
                 self._handle_failed_peer(name)
