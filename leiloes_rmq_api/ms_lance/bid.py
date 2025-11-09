@@ -14,10 +14,7 @@ class Bid:
         cls.channel = channel
         cls.exchange_name = "auction"
         cls.subscribed_queues = ["lance_realizado", "leilao_finalizado", "create_user"]
-        cls.active_auctions = []
-        cls.auction_results = {}
         cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type="direct")
-        cls.public_keys = {}
         cls.create_auction_start_queue()
         Logger.info("Sistema de lances inicializado e pronto para receber eventos.")
 
@@ -51,9 +48,8 @@ class Bid:
     @classmethod
     def handle_create_user(cls, routing_key: str, body: str):
         body = json.loads(body)
-        user_id = body["user_id"]
-        cls.public_keys[user_id] = body["public_key"]
-        Logger.info(f"Usuário cadastrado no sistema: {user_id}")
+        cls.users.append(body["user"])
+        Logger.info(f"Usuário cadastrado no sistema: {body["user"]}")
 
     @classmethod
     def handle_bid_made(cls, routing_key: str, body: str):

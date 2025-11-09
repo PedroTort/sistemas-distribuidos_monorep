@@ -11,17 +11,6 @@ Logger.input_prompt("Leiloes para participar (separados por virgula):")
 auctions_input = input().lower()
 auctions = [a.strip() for a in auctions_input.split(",")]
 
-private_key = rsa.generate_private_key(
-    public_exponent=65537,
-    key_size=2048,
-)
-private_key_bytes = private_key.private_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PrivateFormat.PKCS8,
-    encryption_algorithm=serialization.NoEncryption(),
-)
-
-
 def listen_and_subscribe():
     type_name = "listener"
     client = Client(name, type_name)
@@ -33,13 +22,8 @@ def listen_and_subscribe():
 
 
 def bid():
-    public_key = private_key.public_key()
-    public_key_bytes = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
     type_name = "bidder"
-    client = Client(name, type_name, private_key_bytes, public_key_bytes)
+    client = Client(name, type_name)
     for auction in auctions:
         client.subscribe_to_auction(auction)
         time.sleep(1)

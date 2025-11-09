@@ -11,29 +11,22 @@ class Client:
     def __init__(
         self,
         name: str,
-        type: str,
-        private_key_bytes: bytes = None,
-        public_key_bytes: dict = None,
+        type: str
     ):
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters("localhost")
         )
         self.channel = self.connection.channel()
         self.name = name
-        self.private_key_bytes = private_key_bytes
         self.exchange_name = "auction"
         self.subscribed_auctions = []
         self.type = type
 
         if type == "bidder":
-            public_key_dict = {
-                "user_id": self.name,
-                "public_key": public_key_bytes.decode("utf-8"),
-            }
             self.channel.basic_publish(
                 exchange=self.exchange_name,
                 routing_key="create_user",
-                body=json.dumps(public_key_dict, sort_keys=True),
+                body=json.dumps("", sort_keys=True),
             )
             Logger.info(f"Cliente {self.name} cadastrado como licitante no sistema.")
 
@@ -95,17 +88,10 @@ class Client:
                 "cliente": self.name,
                 "valor_lance": bid_value,
             }
-            private_key = RSA.import_key(self.private_key_bytes)
-            hash = SHA256.new(json.dumps(body, sort_keys=True).encode("utf-8"))
-            signature = pkcs1_15.new(private_key).sign(hash)
-            body_with_signature = {
-                "body": body,
-                "signature": base64.b64encode(signature).decode("utf-8"),
-            }
             self.channel.basic_publish(
                 exchange=self.exchange_name,
                 routing_key="lance_realizado",
-                body=json.dumps(body_with_signature),
+                body=json.dumps(body),
             )
             Logger.bid_placed(
                 f"Cliente {self.name} | Leilão: {auction_queue} | Valor do lance: {bid_value}"

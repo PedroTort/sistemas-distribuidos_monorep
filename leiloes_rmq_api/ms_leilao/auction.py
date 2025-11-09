@@ -2,63 +2,34 @@ import pika
 import time
 import json
 from datetime import datetime, timedelta
+
+from models import AuctionModel
+from ms_leilao.auction_lifecycle import AuctionLifecycle
 from terminal_logger import Logger
 
 
 class Auction:
     def __init__(
         self,
-        auction_id: str,
-        description: str,
-        duration: int,
+        auction_model: AuctionModel,
     ):
-        self.auction_id = auction_id
-        self.description = description
-        self.status = "nao_iniciado"
-        self.duration = duration
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters("localhost")
         )
         self.channel = self.connection.channel()
+        self.auction_model = auction_model
         self.exchange_name = "auction"
         self.channel.exchange_declare(
             exchange=self.exchange_name, exchange_type="direct"
         )
 
-    def start_auction(self):
-        self.status = "ativo"
-        start_time = datetime.now()
-        end_time = start_time + timedelta(seconds=self.duration)
+    def run_auction(self):
+        try:
+            lifecycle_thread = AuctionLifecycle(auction_model=self.auction_model)
+            lifecycle_thread.start()
 
-        body = {
-            "id_leilao": self.auction_id,
-            "description": self.description,
-            "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-            "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        self.channel.basic_publish(
-            exchange=self.exchange_name,
-            routing_key="leilao_iniciado",
-            body=json.dumps(body),
-        )
-
-        Logger.auction_started(
-            f"{self.auction_id} ('{self.description}') iniciado às {start_time.strftime('%H:%M:%S')} (duração: {self.duration}s)"
-        )
-
-        time.sleep(self.duration)
-
-        self.status = "encerrado"
-
-        body_final = {
-            "id_leilao": self.auction_id,
-            "end_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        self.channel.basic_publish(
-            exchange=self.exchange_name,
-            routing_key="leilao_finalizado",
-            body=json.dumps(body_final),
-        )
-        Logger.auction_ended(
-            f"{self.auction_id} finalizado às {body_final['end_time']}"
-        )
+            Logger.success(f"Leilão {self.auction_model.auction_id} criado e agendado.")
+            return {"message": "ok", "status_code": 200}
+        except Exception as e:
+            Logger.error(f"Erro ao criar leilão: {e}")
+            return {"erro": str(e)}
