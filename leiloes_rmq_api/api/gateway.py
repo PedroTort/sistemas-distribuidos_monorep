@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from sse_starlette.sse import EventSourceResponse
 from typing import Dict
 from terminal_logger import Logger
+from fastapi.middleware.cors import CORSMiddleware
 
 RABBITMQ_HOST = "localhost"
 EXCHANGE_NAME = "auction"
@@ -51,6 +52,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="API Gateway", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite o seu frontend React
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos os métodos (GET, POST, DELETE, etc.)
+    allow_headers=["*"],  # Permite todos os cabeçalhos
+)
 
 # --- Modelos Pydantic ---
 

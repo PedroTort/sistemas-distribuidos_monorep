@@ -1,5 +1,5 @@
-// URL base do seu backend
-const API_URL = 'http://localhost:8000/';
+// MODIFICADO: URL base do seu backend
+export const API_URL = 'http://localhost:5000/'; // Porta 5000
 
 /**
  * Função genérica para tratar requisições POST
@@ -22,7 +22,6 @@ const postAPI = async (endpoint, bodyData) => {
         }
 
         const text = await response.text();
-        // Tenta fazer parse do JSON, mas retorna um objeto de sucesso se a resposta for vazia
         const data = text ? JSON.parse(text) : { success: true, message: `${endpoint} executado.` };
         console.log(`Resposta da API para ${endpoint}:`, data);
         return data;
@@ -34,10 +33,43 @@ const postAPI = async (endpoint, bodyData) => {
 };
 
 /**
+ * NOVO: Função genérica para tratar requisições DELETE (com corpo)
+ */
+const deleteAPI = async (endpoint, bodyData) => {
+    try {
+        console.log(`Chamando DELETE em: ${endpoint}`, bodyData);
+        const response = await fetch(`${API_URL}${endpoint}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(bodyData)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Erro da API (${response.status}) em ${endpoint}:`, errorText);
+            throw new Error(`Erro na API (${response.status}): ${errorText || response.statusText}`);
+        }
+
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : { success: true, message: `${endpoint} executado.` };
+        console.log(`Resposta da API para ${endpoint}:`, data);
+        return data;
+
+    } catch (error) {
+        console.error(`Falha ao chamar ${endpoint}:`, error);
+        throw error;
+    }
+};
+
+
+/**
  * Cria um novo leilão.
  */
 export const create_auction = async (auctionData) => {
-    return postAPI('create-auction', auctionData);
+    // MODIFICADO: Endpoint
+    return postAPI('leiloes', auctionData);
 };
 
 /**
@@ -45,8 +77,9 @@ export const create_auction = async (auctionData) => {
  */
 export const get_auctions = async () => {
     try {
-        console.log("Chamando GET em: get-auctions");
-        const response = await fetch(`${API_URL}get-auctions`, {
+        // MODIFICADO: Endpoint
+        console.log("Chamando GET em: leiloes/ativos");
+        const response = await fetch(`${API_URL}leiloes/ativos`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -55,7 +88,7 @@ export const get_auctions = async () => {
             throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        console.log("Resposta de get-auctions:", data);
+        console.log("Resposta de leiloes/ativos:", data);
         return data;
     } catch (error) {
         console.error('Falha ao chamar get_auctions:', error);
@@ -66,59 +99,32 @@ export const get_auctions = async () => {
 /**
  * Efetua um lance em um leilão.
  */
-export const make_bid = async (auctionName, bidValue, bidderName) => {
-    return postAPI('make-bid', {
-        auction_name: auctionName,
-        bid_value: bidValue,
-        bidder_name: bidderName
-    });
+export const make_bid = async (auctionData) => {
+    // MODIFICADO: Endpoint e corpo
+    // O backend espera o corpo que o MS Lance espera, vamos apenas passar o objeto
+    return postAPI('lance', auctionData);
 };
 
 /**
- * Registra interesse (inscrição) em um leilão.
+ * MODIFICADO: Registra interesse (inscrição) em um leilão.
  */
-export const subscribe_to_auction = async (auctionName, subscriberName) => {
-    return postAPI('subscribe', {
-        auction_name: auctionName,
-        subscriber_name: subscriberName
-    });
+export const subscribe_to_auction = async (leilao_id, client_id) => {
+    // O backend espera o ID na URL e o client_id no corpo
+    const endpoint = `leiloes/${leilao_id}/registrar-interesse`;
+    const body = { client_id: client_id };
+    return postAPI(endpoint, body);
 };
 
 /**
- * Cancela interesse (remove inscrição) em um leilão.
+ * MODIFICADO: Cancela interesse (remove inscrição) em um leilão.
  */
-export const unsubscribe_from_auction = async (auctionName, subscriberName) => {
-    return postAPI('unsubscribe', {
-        auction_name: auctionName,
-        subscriber_name: subscriberName
-    });
+export const unsubscribe_from_auction = async (leilao_id, client_id) => {
+    // O backend espera o ID na URL e o client_id no corpo
+    const endpoint = `leiloes/${leilao_id}/cancelar-interesse`;
+    const body = { client_id: client_id };
+    // Usa o novo helper DELETE
+    return deleteAPI(endpoint, body);
 };
 
-/**
- * (NOVA FUNÇÃO) Busca notificações para um usuário específico.
- * Assumindo que o backend tem um endpoint como /get-notifications/nomeDoUsuario
- */
-export const get_notifications = async (userName) => {
-    try {
-        // Não usamos o console.log aqui para não poluir o console a cada 5s
-        const response = await fetch(`${API_URL}get-notifications/${userName}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!response.ok) {
-            // Se o backend der 404 (sem notificações), não é um erro fatal
-            if (response.status === 404) {
-                return [];
-            }
-            throw new Error(`Erro ao buscar notificações: ${response.status} ${response.statusText}`);
-        }
-        // Assumimos que a API retorna um array de mensagens
-        // Ex: [ { id: 1, text: "Novo lance de R$ 150 no Leilão X" }, ... ]
-        const data = await response.json();
-        return data || []; // Garante que é um array
-    } catch (error) {
-        console.error('Falha ao chamar get_notifications:', error);
-        // Retorna array vazio em caso de falha para não quebrar a UI
-        return [];
-    }
-};
+// REMOVIDO: A função get_notifications foi removida.
+// Usaremos EventSource (SSE) diretamente no componente React.

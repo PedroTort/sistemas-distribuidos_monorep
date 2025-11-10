@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react'; // Importa o useEffect e useRef
+import React, { useState, useEffect, useRef } from 'react';
 import {
+  API_URL, // MODIFICADO: Importa a URL base
   create_auction,
   get_auctions,
   make_bid,
   subscribe_to_auction,
   unsubscribe_from_auction,
-  get_notifications // Importa a nova função
+  // get_notifications foi removido
 } from './services/api';
 
 // --- ESTILOS ---
@@ -185,6 +186,7 @@ const styles = {
   }
 };
 
+
 // --- COMPONENTE 1: StyledButton ---
 function StyledButton({ onClick, disabled, children, style = {}, type = 'primary' }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -224,6 +226,42 @@ function Modal({ isOpen, onClose, children }) {
     </div>
   );
 }
+
+
+/**
+ * NOVO: Helper para formatar eventos SSE em mensagens legíveis
+ */
+const formatMessage = (eventData) => {
+  const timestamp = new Date().toISOString();
+  const id = new Date().getTime(); // ID simples para a key do React
+  let text = `Evento desconhecido: ${eventData.event_type}`;
+
+  switch (eventData.event_type) {
+    case 'lance_validado':
+      text = `[${eventData.auction_name}] Novo lance de R$ ${eventData.bid_value.toFixed(2)} por ${eventData.user_id}.`;
+      break;
+    case 'lance_invalidado':
+      text = `[${eventData.auction_name}] Seu lance foi considerado inválido. Motivo: ${eventData.motivo || 'N/A'}`;
+      break;
+    case 'leilao_vencedor':
+      text = `[${eventData.auction_name}] Leilão encerrado! Vencedor: ${eventData.user_id} com R$ ${eventData.bid_value.toFixed(2)}.`;
+      break;
+    case 'link_pagamento':
+      text = `[${eventData.auction_name}] Parabéns, você venceu! Link para pagamento: ${eventData.payment_link}`;
+      break;
+    case 'status_pagamento':
+      text = `[${eventData.auction_name}] Atualização do pagamento: ${eventData.status}`;
+      break;
+    case 'sistema': // Adicionado para mensagens de conexão/erro
+      text = `[Sistema] ${eventData.message}`;
+      break;
+    default:
+      text = `[${eventData.auction_name || 'Sistema'}] ${eventData.message || JSON.stringify(eventData)}`;
+      break;
+  }
+  return { id, timestamp, text };
+};
+
 
 // --- COMPONENTE 3: UserColumn ---
 function UserColumn({ userTitle }) {
@@ -315,7 +353,7 @@ function UserColumn({ userTitle }) {
             throw new Error("Preencha todos os campos do leilão (Nome, Valor > 0, Datas).");
           }
           const auctionData = {
-            name: auctionName,
+            auction_name: auctionName,
             description: auctionDesc,
             current_value: parseFloat(auctionValue),
             start_date: new Date(auctionStart).toISOString(), // Converte para UTC
@@ -328,7 +366,12 @@ function UserColumn({ userTitle }) {
           if (parseFloat(bidValue) <= 0) {
             throw new Error("O valor do lance deve ser maior que zero.");
           }
-          data = await make_bid(auctionName, parseFloat(bidValue), userName);
+          const bidData = {
+            auction_name: auctionName,
+            bid_value: parseFloat(bidValue),
+            bidder_name: userName
+          };
+          data = await make_bid(bidData);
           setApiResult(data);
           break;
         case 'SUBSCRIBE':
@@ -425,42 +468,68 @@ function UserColumn({ userTitle }) {
     );
   };
 
-  // --- Lógica de Polling para Notificações ---
-  // useEffect(() => {
-  //   if (!userName) {
-  //     setMessages([]);
-  //     return;
-  //   }
+  // --- MODIFICADO: Lógica de Notificações (SSE) ---
+  useEffect(() => {
+    if (!userName) {
+      setMessages([]);
+      return;
+    }
 
-  //   const fetchNotifications = async () => {
-  //     if (document.hidden) return; // Otimização: Não busca se a aba estiver inativa
+    console.log(`Conectando ao SSE como: ${userName}`);
+    // Conecta ao endpoint de eventos do backend
+    const eventSource = new EventSource(`${API_URL}eventos/${userName}`);
 
-  //     const data = await get_notifications(userName);
+    // Ocorre quando a conexão é aberta
+    eventSource.onopen = () => {
+      console.log("Conexão SSE aberta com o servidor.");
+      setMessages(prev => [
+        formatMessage({ event_type: 'sistema', message: 'Conectado ao servidor de eventos.' }),
+        ...prev
+      ]);
+    };
 
-  //     if (Array.isArray(data)) {
-  //       // Compara o número de mensagens para evitar re-renderizações desnecessárias
-  //       setMessages(prevMessages => {
-  //         if (data.length !== prevMessages.length || JSON.stringify(data) !== JSON.stringify(prevMessages)) {
-  //           // Auto-scroll: Rola para o fundo quando novas mensagens chegam
-  //           if (messageListRef.current) {
-  //             // Usamos 'flex-direction: column-reverse', então o scroll é para o topo (que é o fundo visual)
-  //             messageListRef.current.scrollTop = 0;
-  //           }
-  //           return data; // Retorna os dados (a API deve mandar em ordem)
-  //         }
-  //         return prevMessages; // Sem mudanças
-  //       });
-  //     }
-  //   };
+    // Ocorre quando uma nova mensagem (evento) é recebida
+    eventSource.onmessage = (event) => {
+      try {
+        const eventData = JSON.parse(event.data);
+        console.log("Evento SSE recebido:", eventData);
 
-  //   fetchNotifications(); // Busca imediatamente
-  //   const intervalId = setInterval(fetchNotifications, 5000); // Busca a cada 5 segundos
+        // Formata a mensagem e adiciona no início da lista
+        const novaMensagem = formatMessage(eventData);
+        setMessages(prev => [novaMensagem, ...prev]);
 
-  //   return () => {
-  //     clearInterval(intervalId); // Limpeza
-  //   };
+      } catch (error) {
+        console.error("Erro ao processar mensagem SSE:", error, event.data);
+      }
+    };
 
-  // }, [userName]); // Depende do userName
+    // Ocorre se houver um erro na conexão
+    eventSource.onerror = (error) => {
+      console.error("Erro na conexão SSE:", error);
+      setMessages(prev => [
+        formatMessage({ event_type: 'sistema', message: 'Erro na conexão de eventos. Tentando reconectar...' }),
+        ...prev
+      ]);
+      // O EventSource tentará reconectar automaticamente
+    };
+
+    // Função de limpeza: Fecha a conexão quando o componente desmonta ou o userName muda
+    return () => {
+      console.log("Fechando conexão SSE.");
+      eventSource.close();
+    };
+
+  }, [userName]); // Depende do userName
+
+  // NOVO: useEffect para auto-scroll da caixa de mensagens
+  useEffect(() => {
+    if (messageListRef.current) {
+      // Com 'flex-direction: column-reverse', rolar para o topo (0)
+      // mostra o conteúdo mais recente (que está no fundo do flex).
+      messageListRef.current.scrollTop = 0;
+    }
+  }, [messages]); // Roda sempre que as mensagens mudarem
+
 
   // --- Renderização da Coluna ---
   return (
@@ -520,16 +589,17 @@ function UserColumn({ userTitle }) {
       {/* NOVA CAIXA DE NOTIFICAÇÕES (renderiza se estiver logado) */}
       {userName && (
         <div style={styles.messageBox}>
-          <h3 style={styles.messageBoxTitle}>Caixa de Notificações</h3>
+          <h3 style={styles.messageBoxTitle}>Caixa de Notificações (SSE)</h3>
           <div style={styles.messageList} ref={messageListRef}>
             {/* Usamos 'flex-direction: column-reverse' no estilo, 
-              então o .map() normal vai renderizar de baixo para cima. 
-            */}
+                          então o .map() normal vai renderizar de baixo para cima. 
+                          As mensagens já são adicionadas no início do array (ex: [msg3, msg2, msg1])
+                        */}
             {messages.length === 0 ? (
               <p style={styles.noMessages}>Nenhuma notificação por enquanto.</p>
             ) : (
-              messages.map((msg, index) => (
-                <div key={msg.id || index} style={styles.messageItem}>
+              messages.map((msg) => (
+                <div key={msg.id} style={styles.messageItem}>
                   {msg.text}
                   {msg.timestamp && (
                     <span style={styles.messageTimestamp}>

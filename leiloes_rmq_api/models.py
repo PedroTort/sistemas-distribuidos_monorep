@@ -26,7 +26,6 @@ class BidModel(BaseModel):
     auction_name: str
     bidder_name: str
     bid_value: float
-    bid_time: datetime
 
 
 class AuctionSubscriptionModel(BaseModel):
