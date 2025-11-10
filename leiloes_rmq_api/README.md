@@ -11,34 +11,18 @@ Siga a seguinte ordem dos comandos para a execução correta do fluxo
 docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4-management
 ```
 
-Para iniciar as filas:
-
 ```bash
-python ./ms_leilao/init_auctions.py
+uvicorn api.gateway:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-Para iniciar o bid manager
-
 ```bash
-python ./ms_lance/bid_manager.py
+uvicorn ms_leilao.auction:app --host 0.0.0.0 --port 5001 --reload
 ```
 
-Para iniciar o notification manager
-
 ```bash
-python ./ms_notificacao/notification_manager.py
+uvicorn ms_lance.bid:app --host 0.0.0.0 --port 5002 --reload
 ```
 
-Para cada usuário que dará lances:
-
 ```bash
-python ./client/client_manager.py
+uvicorn ms_pagamento.payment:app --host 0.0.0.0 --port 5003 --reload
 ```
-Para iniciar os leiloes
-
-```bash
-python ./ms_leilao/auction_manager.py
-```
-
-
----

@@ -18,7 +18,7 @@ class AuctionModel(BaseModel):
             "start_date": self.start_date.isoformat(),
             "end_date": self.end_date.isoformat(),
             "description": self.description,
-            "auction_id": self.name,
+            "auction_name": self.name,
         }
 
 

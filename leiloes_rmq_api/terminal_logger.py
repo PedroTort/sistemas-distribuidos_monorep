@@ -15,43 +15,43 @@ class TerminalColors:
 
 class MessageFormatter:
     @staticmethod
-    def auction_started(auction_id, description, start_time, end_time):
+    def auction_started(auction_name, description, start_time, end_time):
         return (
-            f"📢 LEILÃO '{auction_id}' INICIADO! 📢\n"
+            f"📢 LEILÃO '{auction_name}' INICIADO! 📢\n"
             f"   Descrição: {TerminalColors.CYAN}{description}{TerminalColors.RESET}\n"
             f"   Início: {start_time}\n"
             f"   Término: {end_time}"
         )
 
     @staticmethod
-    def auction_ended(auction_id, winner_name, bid_value):
+    def auction_ended(auction_name, winner_name, bid_value):
         return (
-            f"Leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET} finalizado:\n"
+            f"Leilão {TerminalColors.BOLD}{auction_name}{TerminalColors.RESET} finalizado:\n"
             f"   Vencedor: {TerminalColors.CYAN}{winner_name}{TerminalColors.RESET}\n"
             f"   Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
         )
 
     @staticmethod
-    def bid_validated(auction_id, client, bid_value):
+    def bid_validated(auction_name, client, bid_value):
         return (
-            f"Lance validado enviado para o leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET}\n"
+            f"Lance validado enviado para o leilão {TerminalColors.BOLD}{auction_name}{TerminalColors.RESET}\n"
             f"   Cliente: {TerminalColors.CYAN}{client}{TerminalColors.RESET}\n"
             f"   Valor do lance: {TerminalColors.LIGHT_GREEN}{bid_value}{TerminalColors.RESET}"
         )
 
     @staticmethod
-    def new_bid_notification(routing_key, auction_id, client, bid_value):
+    def new_bid_notification(routing_key, auction_name, client, bid_value):
         return (
             f"Nova informação da {TerminalColors.BOLD}{routing_key}{TerminalColors.RESET} recebida:\n"
-            f"   Leilão: {TerminalColors.CYAN}{auction_id}{TerminalColors.RESET}\n"
+            f"   Leilão: {TerminalColors.CYAN}{auction_name}{TerminalColors.RESET}\n"
             f"   Cliente: {TerminalColors.MAGENTA}{client}{TerminalColors.RESET}\n"
             f"   Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
         )
 
     @staticmethod
-    def auction_winner(auction_id, client, bid_value):
+    def auction_winner(auction_name, client, bid_value):
         return (
-            f"Resultado do leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET}:\n"
+            f"Resultado do leilão {TerminalColors.BOLD}{auction_name}{TerminalColors.RESET}:\n"
             f"   Vencedor: {TerminalColors.CYAN}{client}{TerminalColors.RESET}\n"
             f"   Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
         )

@@ -36,15 +36,15 @@ class Notification:
     @classmethod
     def handle_bid_validated(cls, body: str):
         data = json.loads(body)
-        auction_id = data["id_leilao"]
+        auction_name = data["auction_name"]
         client = data["cliente"]
         bid_value = data["valor_lance"]
         cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type="direct")
         cls.channel.basic_publish(
-            exchange=cls.exchange_name, routing_key=auction_id, body=body
+            exchange=cls.exchange_name, routing_key=auction_name, body=body
         )
         Logger.bid_validated(
-            f"Lance validado enviado para o leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET}\n"
+            f"Lance validado enviado para o leilão {TerminalColors.BOLD}{auction_name}{TerminalColors.RESET}\n"
             f"  Cliente: {TerminalColors.CYAN}{client}{TerminalColors.RESET}\n"
             f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
         )
@@ -52,18 +52,18 @@ class Notification:
     @classmethod
     def handle_auction_winner(cls, body: str):
         data = json.loads(body)
-        auction_id = data["id_leilao"]
+        auction_name = data["auction_name"]
         client = data["cliente"]
         bid_value = data["valor_lance"]
         data["auction_winner_flag"] = True
 
         cls.channel.exchange_declare(exchange=cls.exchange_name, exchange_type="direct")
         cls.channel.basic_publish(
-            exchange=cls.exchange_name, routing_key=auction_id, body=json.dumps(data)
+            exchange=cls.exchange_name, routing_key=auction_name, body=json.dumps(data)
         )
 
         Logger.auction_winner(
-            f"Resultado do leilão {TerminalColors.BOLD}{auction_id}{TerminalColors.RESET} enviado:\n"
+            f"Resultado do leilão {TerminalColors.BOLD}{auction_name}{TerminalColors.RESET} enviado:\n"
             f"  Vencedor: {TerminalColors.CYAN}{client}{TerminalColors.RESET}\n"
             f"  Valor do lance: {TerminalColors.GREEN}{bid_value}{TerminalColors.RESET}"
         )

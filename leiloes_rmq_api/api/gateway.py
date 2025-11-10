@@ -1,85 +1,258 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import time
 
-from models import AuctionModel, BidModel
-from ms_lance.bid import Bid
-from ms_leilao.auction import Auction
+import pika
+import json
+import threading
+import httpx
+import asyncio
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from sse_starlette.sse import EventSourceResponse
+from typing import Dict
+from terminal_logger import Logger
 
-app = FastAPI()
+RABBITMQ_HOST = "localhost"
+EXCHANGE_NAME = "auction"
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+MS_LEILAO_URL = "http://localhost:5001"
+MS_LANCE_URL = "http://localhost:5002"
 
-active_auctions = []
-auction_results = {}
+# --- Gerenciamento de Estado do Gateway ---
+client_streams: Dict[str, asyncio.Queue] = {}
+interesses: Dict[str, list] = {}
 
-
-@app.get("/")
-async def root():
-    return {"message": "Opa"}
-
-
-@app.get("/get-auctions")
-async def get_auctions():
-    return active_auctions
-
-
-@app.post("/create-auction")
-async def create_item(auction_data: AuctionModel):
-    if auction_data.name in [auction.name for auction in active_auctions]:
-        return {"error": "Auction already exists"}
-    auction = Auction(auction_data)
-    response = auction.run_auction()
-    if response.get("status_code") == 200:
-        print("Auction created successfully")
-        active_auctions.append(auction_data)
-        auction_results[auction_data.name] = {
-            "auction_name": auction_data.name,
-            "bidder_name": "Nenhum lance registrado",
-            "current_value": auction_data.current_value,
-        }
-    else:
-        return {"error": {response.get("message")}}
-    print(active_auctions)
-    return auction_data
+interest_lock = threading.Lock()
+stream_lock = asyncio.Lock()
 
 
-@app.post("/bid-auction")
-async def post_bid_auction(bid: BidModel):
-    Bid.handle_bid_made(active_auctions, auction_results, bid)
-    return bid
+# --- Contexto (Lifespan) para Httpx e RMQ ---
+
+async def start_rmq_consumer_async(app: FastAPI):
+    """Função wrapper para iniciar o consumidor síncrono em uma thread."""
+    loop = asyncio.get_event_loop()
+    app.state.event_loop = loop
+
+    # Pika é bloqueante, então rodamos em uma thread separada
+    consumer_thread = threading.Thread(
+        target=start_rmq_consumer,
+        args=(app,),
+        daemon=True
+    )
+    consumer_thread.start()
+    Logger.info("Gateway: Consumidor RabbitMQ iniciado em background thread.")
 
 
-#
-#
-# @app.post("/subscribe-auction")
-# async def post_subscribe_auction(subscribe_to_auction: AuctionSubscription):
-#     if subscribe_to_auction.auction_name not in [
-#         auction.name for auction in array_auctions
-#     ]:
-#         return {"error": "Auction not found"}
-#     array_subscriber_auctions.append(subscribe_to_auction)
-#     print(
-#         subscribe_to_auction.auction_name
-#         + " subscribed by "
-#         + subscribe_to_auction.subscriber_name
-#     )
-#
-#
-# # futuramente vai ser um post (?)
-# @app.patch("/unsubscribe-auction")
-# async def patch_unsubscribe_auction(unsubscribe_to_auction: AuctionSubscription):
-#     if unsubscribe_to_auction.auction_name not in [
-#         auction.name for auction in array_auctions
-#     ]:
-#         return {"error": "Auction not found"}
-#     array_subscriber_auctions.remove(unsubscribe_to_auction)
-#     print(
-#         unsubscribe_to_auction.subscriber_name
-#         + " unsubscribed from "
-#         + unsubscribe_to_auction.auction_name
-#     )
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Inicia o cliente HTTPX
+    app.state.http_client = httpx.AsyncClient()
+    # Inicia o consumidor RMQ
+    await start_rmq_consumer_async(app)
+
+    yield
+
+    # Limpa
+    await app.state.http_client.aclose()
+    Logger.info("Gateway: Encerrando.")
+
+
+app = FastAPI(title="API Gateway", lifespan=lifespan)
+
+
+# --- Modelos Pydantic ---
+
+class InterestRequest(BaseModel):
+    client_id: str
+
+
+# --- Endpoints REST (Proxy) ---
+
+@app.post("/leiloes")
+async def criar_leilao(request: Request):
+    """Proxy para MS Leilão"""
+    Logger.info("Gateway: Recebido POST /leiloes")
+    try:
+        data = await request.json()
+        client = app.state.http_client
+        response = await client.post(f"{MS_LEILAO_URL}/leiloes", json=data, timeout=10)
+        return JSONResponse(content=response.json(), status_code=response.status_code)
+    except httpx.HTTPStatusError as e:
+        return JSONResponse(content=e.response.json(), status_code=e.response.status_code)
+    except Exception as e:
+        Logger.error(f"Gateway: Erro ao contatar MS Leilão: {e}")
+        return JSONResponse(content={"erro": "MS Leilão indisponível"}, status_code=503)
+
+
+@app.get("/leiloes/ativos")
+async def consultar_leiloes_ativos():
+    """Proxy para MS Leilão"""
+    Logger.info("Gateway: Recebido GET /leiloes/ativos")
+    try:
+        client = app.state.http_client
+        response = await client.get(f"{MS_LEILAO_URL}/leiloes/ativos", timeout=10)
+        return JSONResponse(content=response.json(), status_code=response.status_code)
+    except Exception as e:
+        Logger.error(f"Gateway: Erro ao contatar MS Leilão: {e}")
+        return JSONResponse(content={"erro": "MS Leilão indisponível"}, status_code=503)
+
+
+@app.post("/lance")
+async def efetuar_lance(request: Request):
+    """Proxy para MS Lance"""
+    Logger.info("Gateway: Recebido POST /lances")
+    try:
+        data = await request.json()
+        client = app.state.http_client
+        response = await client.post(f"{MS_LANCE_URL}/lances", json=data, timeout=10)
+        return JSONResponse(content=response.json(), status_code=response.status_code)
+    except httpx.HTTPStatusError as e:
+        return JSONResponse(content=e.response.json(), status_code=e.response.status_code)
+    except Exception as e:
+        Logger.error(f"Gateway: Erro ao contatar MS Lance: {e}")
+        return JSONResponse(content={"erro": "MS Lance indisponível"}, status_code=503)
+
+
+# --- Endpoints de Interesse (Síncrono) ---
+
+@app.post("/leiloes/{leilao_id}/registrar-interesse")
+def registrar_interesse(leilao_id: str, data: InterestRequest):
+    with interest_lock:
+        if leilao_id not in interesses:
+            interesses[leilao_id] = []
+        if data.client_id not in interesses[leilao_id]:
+            interesses[leilao_id].append(data.client_id)
+
+    Logger.info(f"Gateway: Cliente {data.client_id} registrou interesse em {leilao_id}")
+    return {"status": "interesse registrado", "leilao": leilao_id, "cliente": data.client_id}
+
+
+@app.delete("/leiloes/{leilao_id}/cancelar-interesse")
+def cancelar_interesse(leilao_id: str, data: InterestRequest):
+    with interest_lock:
+        if leilao_id in interesses and data.client_id in interesses[leilao_id]:
+            interesses[leilao_id].remove(data.client_id)
+            Logger.info(f"Gateway: Cliente {data.client_id} cancelou interesse em {leilao_id}")
+            return {"status": "interesse cancelado"}
+    raise HTTPException(status_code=404, detail="Interesse não encontrado")
+
+
+# --- Endpoint SSE (Async) ---
+
+@app.get("/eventos/{client_id}")
+async def sse_stream(request: Request, client_id: str):
+    """Mantém conexão SSE com um cliente."""
+    Logger.info(f"Gateway: Cliente {client_id} conectou ao stream SSE.")
+    message_queue = asyncio.Queue()
+
+    async with stream_lock:
+        client_streams[client_id] = message_queue
+
+    async def event_generator():
+        try:
+            while True:
+                # Verifica se o cliente desconectou
+                if await request.is_disconnected():
+                    Logger.info(f"Gateway: Cliente {client_id} desconectou (detectado).")
+                    break
+
+                # Espera por uma mensagem
+                message_data = await message_queue.get()
+                yield {"data": json.dumps(message_data)}
+        except asyncio.CancelledError:
+            Logger.info(f"Gateway: Conexão SSE para {client_id} cancelada.")
+        finally:
+            # Limpa a fila
+            async with stream_lock:
+                if client_id in client_streams:
+                    del client_streams[client_id]
+            Logger.info(f"Gateway: Fila de eventos para {client_id} removida.")
+
+    return EventSourceResponse(event_generator())
+
+
+# --- Consumidor RabbitMQ (Lógica de Broadcast) ---
+
+def broadcast_message(app: FastAPI, message_data: dict, routing_key: str):
+    """
+    Envia a mensagem RMQ para os clientes SSE apropriados.
+    Esta função é chamada de uma thread Pika (síncrona).
+    """
+    Logger.info(f"Gateway: Recebido do RMQ '{routing_key}'. Roteando para SSE...")
+    target_clients = set()
+    leilao_id = message_data.get("auction_name")
+    user_id = message_data.get("user_id") or message_data.get("cliente")
+
+    message_data["event_type"] = routing_key
+
+    with interest_lock:
+        if routing_key in ["lance_validado", "leilao_vencedor"]:
+            if leilao_id in interesses:
+                target_clients.update(interesses[leilao_id])
+
+        elif routing_key in ["lance_invalidado", "link_pagamento", "status_pagamento"]:
+            if user_id:
+                target_clients.add(user_id)
+
+    # Pega o loop de eventos do app (que está na thread principal)
+    loop = app.state.event_loop
+
+    # Envia para as filas dos clientes (operação thread-safe)
+    for client_id in target_clients:
+        if client_id in client_streams:
+            queue = client_streams[client_id]
+            # Usa run_coroutine_threadsafe para agendar a tarefa no loop principal
+            asyncio.run_coroutine_threadsafe(queue.put(message_data), loop)
+            Logger.info(f"Gateway: Enviando SSE '{routing_key}' para {client_id}")
+
+
+def start_rmq_consumer(app: FastAPI):
+    """
+    Consome todos os eventos relevantes do RabbitMQ (Função Síncrona).
+    """
+    Logger.info("Gateway: Iniciando lógica do consumidor RabbitMQ...")
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
+        channel = connection.channel()
+        channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type="direct")
+
+        routing_keys = [
+            "lance_validado", "lance_invalidado", "leilao_vencedor",
+            "link_pagamento", "status_pagamento"
+        ]
+
+        queue_name = "api_gateway_listener"
+        channel.queue_declare(queue=queue_name, durable=True, exclusive=False)
+
+        for rk in routing_keys:
+            channel.queue_bind(exchange=EXCHANGE_NAME, queue=queue_name, routing_key=rk)
+
+        def rmq_callback(ch, method, properties, body):
+            try:
+                message_data = json.loads(body.decode("utf-8"))
+                broadcast_message(app, message_data, method.routing_key)
+            except Exception as e:
+                Logger.error(f"Gateway: Erro ao processar msg RMQ: {e}")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+        channel.basic_consume(queue=queue_name, on_message_callback=rmq_callback, auto_ack=False)
+        channel.start_consuming()
+
+    except pika.exceptions.AMQPConnectionError:
+        Logger.error("Gateway: Não foi possível conectar ao RabbitMQ. Reiniciando em 5s...")
+        time.sleep(5)
+        start_rmq_consumer(app)
+    except Exception as e:
+        Logger.error(f"Gateway: Consumidor RMQ falhou: {e}")
+    finally:
+        if 'connection' in locals() and connection.is_open:
+            connection.close()
+        Logger.info("Gateway: Consumidor RabbitMQ encerrado.")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    Logger.info("API Gateway (FastAPI/SSE) iniciando na porta 5000.")
+    uvicorn.run(app, host="0.0.0.0", port=5000)
