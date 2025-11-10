@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+
 @dataclass
 class AuctionModel(BaseModel):
     name: str
@@ -17,7 +18,7 @@ class AuctionModel(BaseModel):
             "start_date": self.start_date.isoformat(),
             "end_date": self.end_date.isoformat(),
             "description": self.description,
-            "auction_id": self.auction_id
+            "auction_id": self.name,
         }
 
 

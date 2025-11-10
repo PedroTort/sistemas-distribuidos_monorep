@@ -28,8 +28,8 @@ class Auction:
             lifecycle_thread = AuctionLifecycle(auction_model=self.auction_model)
             lifecycle_thread.start()
 
-            Logger.success(f"Leilão {self.auction_model.auction_id} criado e agendado.")
+            Logger.success(f"Leilão {self.auction_model.name} criado e agendado.")
             return {"message": "ok", "status_code": 200}
         except Exception as e:
             Logger.error(f"Erro ao criar leilão: {e}")
-            return {"erro": str(e)}
+            return {"message": e}
