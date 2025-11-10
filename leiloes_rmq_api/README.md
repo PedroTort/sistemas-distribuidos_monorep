@@ -12,6 +12,10 @@ docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4-management
 ```
 
 ```bash
+sudo systemctl start rabbitmq-server
+```
+
+```bash
 uvicorn api.gateway:app --host 0.0.0.0 --port 5000 --reload
 ```
 
