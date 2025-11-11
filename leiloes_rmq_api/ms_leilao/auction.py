@@ -40,10 +40,6 @@ class ActiveAuctionInfo(BaseModel):
 class AuctionUpdateValue(BaseModel):
     new_value: float
 
-
-# --- Endpoints ---
-
-
 @app.post("/leiloes", response_model=AuctionInfo, status_code=201)
 def criar_leilao(dados: AuctionCreate, background_tasks: BackgroundTasks):
     Logger.info(f"Recebida requisição para criar leilão: {dados.auction_name}")
@@ -57,7 +53,6 @@ def criar_leilao(dados: AuctionCreate, background_tasks: BackgroundTasks):
             status_code=400, detail="Data/hora de término deve ser após o início"
         )
 
-    # Armazena a definição do leilão
     leilao_info = AuctionInfo(
         auction_name=auction_name,
         description=dados.description,
@@ -66,8 +61,7 @@ def criar_leilao(dados: AuctionCreate, background_tasks: BackgroundTasks):
         current_value=dados.current_value,
         status="nao_iniciado",
     )
-    leiloes_db[auction_name] = leilao_info.model_dump()  # Armazena como dict
-    # Inicia a thread do ciclo de vida do leilão
+    leiloes_db[auction_name] = leilao_info.model_dump()
     lifecycle_thread = AuctionLifecycle(
         auction_name=auction_name,
         description=dados.description,
@@ -75,7 +69,6 @@ def criar_leilao(dados: AuctionCreate, background_tasks: BackgroundTasks):
         end_date=dados.end_date,
         current_value=dados.current_value,
     )
-    # Usamos start() pois é uma Thread, não uma task de background do FastAPI
     lifecycle_thread.start()
     leilao_threads[auction_name] = lifecycle_thread
 
@@ -127,12 +120,10 @@ def atualizar_valor_leilao(auction_name: str, data: AuctionUpdateValue):
 
     leilao = leiloes_db[auction_name]
 
-    # Atualiza o valor usando o dado do modelo Pydantic
     leilao["current_value"] = data.new_value
 
     Logger.success(f"Leilão {auction_name} atualizado para valor {data.new_value}.")
 
-    # Retorna o objeto completo do leilão atualizado
     return AuctionInfo(**leilao)
 
 

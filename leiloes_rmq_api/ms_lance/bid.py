@@ -109,9 +109,6 @@ def start_rmq_consumer():
         Logger.info("Consumidor RabbitMQ do MS Lance encerrado.")
 
 
-# --- API FastAPI ---
-
-
 class BidCreate(BaseModel):
     auction_name: str
     bidder_name: str
@@ -120,7 +117,6 @@ class BidCreate(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Inicia o consumidor RMQ em uma thread daemon
     consumer_thread = threading.Thread(target=start_rmq_consumer, daemon=True)
     consumer_thread.start()
     Logger.info("MS Lance: Consumidor RabbitMQ iniciado em background.")
@@ -133,9 +129,6 @@ app = FastAPI(title="MS Lance", lifespan=lifespan)
 
 @app.post("/lances")
 def efetuar_lance(new_bid: BidCreate):
-    """
-    Recebe um lance via REST do API Gateway.
-    """
     Logger.info(
         f"Recebido lance de {new_bid.bidder_name} para {new_bid.auction_name} no valor de {new_bid.bid_value}"
     )
@@ -160,7 +153,6 @@ def efetuar_lance(new_bid: BidCreate):
                 Logger.bid_validated(message)
                 return {"status": "lance_aceito", "data": new_bid_data}
             else:
-                # Lance INVÁLIDO (valor baixo)
                 motivo = f"Lance R$ {new_bid.bid_value} não é maior que o lance atual R$ {current_bid['bid_value']}."
                 invalid_data = {
                     "auction_name": new_bid.auction_name,
@@ -172,7 +164,6 @@ def efetuar_lance(new_bid: BidCreate):
                 Logger.error(motivo)
                 raise HTTPException(status_code=400, detail=motivo)
         else:
-            # Lance INVÁLIDO (leilão inativo)
             motivo = "Leilão não está ativo."
             invalid_data = {
                 "auction_name": new_bid.auction_name,

@@ -9,7 +9,6 @@ import {
   // get_notifications foi removido
 } from './services/api';
 
-// --- ESTILOS ---
 const styles = {
   appContainer: {
     display: 'flex',
@@ -92,7 +91,7 @@ const styles = {
     marginTop: '1.5rem',
     width: '400px',
     textAlign: 'center',
-    minHeight: '4rem', // Garante espaço mesmo vazio
+    minHeight: '4rem',
   },
   errorText: {
     color: '#dc2626',
@@ -161,10 +160,10 @@ const styles = {
   },
   messageList: {
     height: '200px',
-    overflowY: 'auto', // Adiciona scroll
+    overflowY: 'auto',
     padding: '0.5rem',
     display: 'flex',
-    flexDirection: 'column-reverse', // Mostra mensagens novas em baixo
+    flexDirection: 'column-reverse',
   },
   messageItem: {
     padding: '0.5rem 0.75rem',
@@ -186,8 +185,6 @@ const styles = {
   }
 };
 
-
-// --- COMPONENTE 1: StyledButton ---
 function StyledButton({ onClick, disabled, children, style = {}, type = 'primary' }) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -214,7 +211,6 @@ function StyledButton({ onClick, disabled, children, style = {}, type = 'primary
   );
 }
 
-// --- COMPONENTE 2: Modal (Popup) ---
 function Modal({ isOpen, onClose, children }) {
   if (!isOpen) return null;
 
@@ -228,12 +224,9 @@ function Modal({ isOpen, onClose, children }) {
 }
 
 
-/**
- * NOVO: Helper para formatar eventos SSE em mensagens legíveis
- */
 const formatMessage = (eventData) => {
   const timestamp = new Date().toISOString();
-  const id = new Date().getTime(); // ID simples para a key do React
+  const id = new Date().getTime();
   let text = `Evento desconhecido: ${eventData.event_type}`;
 
   switch (eventData.event_type) {

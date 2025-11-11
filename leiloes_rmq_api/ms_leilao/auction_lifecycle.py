@@ -25,13 +25,11 @@ class AuctionLifecycle(Thread):
         self.channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type="direct")
 
     def run(self):
-        # 1. Esperar até a hora de início
         wait_seconds = (self.start_date - datetime.now(timezone(timedelta(hours=-3)))).total_seconds()
         if wait_seconds > 0:
             Logger.info(f"Leilão {self.auction_name} esperando {wait_seconds:.0f}s para iniciar.")
             time.sleep(wait_seconds)
 
-        # 2. Iniciar leilão e publicar
         self.status = "ativo"
         start_date_str = self.start_date.strftime("%Y-%m-%d %H:%M:%S")
         end_date_str = self.end_date.strftime("%Y-%m-%d %H:%M:%S")
@@ -52,12 +50,10 @@ class AuctionLifecycle(Thread):
             f"{self.auction_name} ('{self.description}') iniciado às {start_date_str}."
         )
 
-        # 3. Esperar até a hora de término
         duration = (self.end_date - self.start_date).total_seconds()
         if duration > 0:
             time.sleep(duration)
 
-        # 4. Finalizar leilão e publicar
         self.status = "encerrado"
         body_final = {
             "auction_name": self.auction_name,

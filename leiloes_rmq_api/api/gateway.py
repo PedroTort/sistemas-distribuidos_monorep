@@ -28,7 +28,6 @@ stream_lock = asyncio.Lock()
 
 
 async def start_rmq_consumer_async(app: FastAPI):
-    """Função wrapper para iniciar o consumidor síncrono em uma thread."""
     loop = asyncio.get_event_loop()
     app.state.event_loop = loop
 
@@ -54,10 +53,10 @@ app = FastAPI(title="API Gateway", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite o seu frontend React
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos os métodos (GET, POST, DELETE, etc.)
-    allow_headers=["*"],  # Permite todos os cabeçalhos
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Modelos Pydantic ---
@@ -66,13 +65,8 @@ app.add_middleware(
 class InterestRequest(BaseModel):
     client_id: str
 
-
-# --- Endpoints REST (Proxy) ---
-
-
 @app.post("/leiloes")
 async def criar_leilao(request: Request):
-    """Proxy para MS Leilão"""
     Logger.info("Gateway: Recebido POST /leiloes")
     try:
         data = await request.json()
@@ -152,10 +146,6 @@ def cancelar_interesse(leilao_id: str, data: InterestRequest):
             )
             return {"status": "interesse cancelado"}
     raise HTTPException(status_code=404, detail="Interesse não encontrado")
-
-
-# --- Endpoint SSE (Async) ---
-
 
 @app.get("/eventos/{client_id}")
 async def sse_stream(request: Request, client_id: str):
@@ -272,7 +262,6 @@ def start_rmq_consumer(app: FastAPI):
 async def atualizar_valor_leilao(
     client: httpx.AsyncClient, auction_name: str, new_value: float
 ):
-
     Logger.info(
         f"Gateway: Atualizando valor do leilão {auction_name} para {new_value} no MS Leilão..."
     )

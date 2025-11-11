@@ -1,9 +1,5 @@
-// MODIFICADO: URL base do seu backend
-export const API_URL = 'http://localhost:5000/'; // Porta 5000
+export const API_URL = 'http://localhost:5000/';
 
-/**
- * Função genérica para tratar requisições POST
- */
 const postAPI = async (endpoint, bodyData) => {
     try {
         console.log(`Chamando POST em: ${endpoint}`, bodyData);
@@ -32,9 +28,6 @@ const postAPI = async (endpoint, bodyData) => {
     }
 };
 
-/**
- * NOVO: Função genérica para tratar requisições DELETE (com corpo)
- */
 const deleteAPI = async (endpoint, bodyData) => {
     try {
         console.log(`Chamando DELETE em: ${endpoint}`, bodyData);
@@ -64,17 +57,10 @@ const deleteAPI = async (endpoint, bodyData) => {
 };
 
 
-/**
- * Cria um novo leilão.
- */
 export const create_auction = async (auctionData) => {
-    // MODIFICADO: Endpoint
     return postAPI('leiloes', auctionData);
 };
 
-/**
- * Busca todos os leilões ativos.
- */
 export const get_auctions = async () => {
     try {
         // MODIFICADO: Endpoint
@@ -96,33 +82,20 @@ export const get_auctions = async () => {
     }
 };
 
-/**
- * Efetua um lance em um leilão.
- */
 export const make_bid = async (auctionData) => {
     return postAPI('lance', auctionData);
 };
 
-/**
- * MODIFICADO: Registra interesse (inscrição) em um leilão.
- */
+
 export const subscribe_to_auction = async (leilao_id, client_id) => {
-    // O backend espera o ID na URL e o client_id no corpo
     const endpoint = `leiloes/${leilao_id}/registrar-interesse`;
     const body = { client_id: client_id };
     return postAPI(endpoint, body);
 };
 
-/**
- * MODIFICADO: Cancela interesse (remove inscrição) em um leilão.
- */
+
 export const unsubscribe_from_auction = async (leilao_id, client_id) => {
-    // O backend espera o ID na URL e o client_id no corpo
     const endpoint = `leiloes/${leilao_id}/cancelar-interesse`;
     const body = { client_id: client_id };
-    // Usa o novo helper DELETE
     return deleteAPI(endpoint, body);
 };
-
-// REMOVIDO: A função get_notifications foi removida.
-// Usaremos EventSource (SSE) diretamente no componente React.
