@@ -100,8 +100,6 @@ export const get_auctions = async () => {
  * Efetua um lance em um leilão.
  */
 export const make_bid = async (auctionData) => {
-    // MODIFICADO: Endpoint e corpo
-    // O backend espera o corpo que o MS Lance espera, vamos apenas passar o objeto
     return postAPI('lance', auctionData);
 };
 

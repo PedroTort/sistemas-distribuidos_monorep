@@ -15,6 +15,7 @@ EXCHANGE_NAME = "auction"
 
 # --- Lógica de Publicação e Consumo (Reutilizada) ---
 
+
 def get_pika_connection_channel():
     connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
     channel = connection.channel()
@@ -42,7 +43,9 @@ def handle_auction_winner(body_str: str):
     winner_id = data.get("cliente")
     valor = data.get("valor_lance")
 
-    Logger.info(f"MS Pagamento: Recebido vencedor {winner_id} do leilão {auction_name} (Valor: R$ {valor})")
+    Logger.info(
+        f"MS Pagamento: Recebido vencedor {winner_id} do leilão {auction_name} (Valor: R$ {valor})"
+    )
 
     if winner_id == "Nenhum lance registrado":
         Logger.info(f"Leilão {auction_name} terminou sem lances.")
@@ -58,10 +61,10 @@ def handle_auction_winner(body_str: str):
     # 2. Publicar 'link_pagamento'
     link_data = {
         "auction_name": auction_name,
-        "user_id": winner_id,
+        "bidder_name": winner_id,
         "valor": valor,
         "link_pagamento": link_pagamento,
-        "transacao_id": transacao_id
+        "transacao_id": transacao_id,
     }
     notify_rabbit_mq(routing_key="link_pagamento", body=link_data)
 
@@ -69,12 +72,12 @@ def handle_auction_winner(body_str: str):
     simular_webhook_thread = threading.Thread(
         target=simular_chamada_webhook,
         args=(transacao_id, auction_name, winner_id, valor),
-        daemon=True
+        daemon=True,
     )
     simular_webhook_thread.start()
 
 
-def simular_chamada_webhook(transacao_id, auction_name, user_id, valor):
+def simular_chamada_webhook(transacao_id, auction_name, bidder_name, valor):
     """(MOCK) Simula o sistema externo chamando nosso webhook."""
     time.sleep(10)  # Simula tempo
     status = random.choice(["aprovado", "recusado"])
@@ -84,8 +87,8 @@ def simular_chamada_webhook(transacao_id, auction_name, user_id, valor):
         "id_transacao": transacao_id,
         "status_pagamento": status,
         "valor": valor,
-        "dados_comprador": user_id,
-        "leilao_id_interno": auction_name  # Facilitador do Mock
+        "dados_comprador": bidder_name,
+        "leilao_id_interno": auction_name,  # Facilitador do Mock
     }
 
     try:
@@ -103,7 +106,9 @@ def start_rmq_consumer():
     routing_key = "leilao_vencedor"
 
     channel.queue_declare(queue=queue_name, durable=True)
-    channel.queue_bind(exchange=EXCHANGE_NAME, queue=queue_name, routing_key=routing_key)
+    channel.queue_bind(
+        exchange=EXCHANGE_NAME, queue=queue_name, routing_key=routing_key
+    )
 
     def rmq_callback(ch, method, properties, body):
         Logger.info(f"MS Pagamento recebeu evento: {method.routing_key}")
@@ -113,7 +118,9 @@ def start_rmq_consumer():
             Logger.error(f"Erro ao processar {method.routing_key}: {e}")
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    channel.basic_consume(queue=queue_name, on_message_callback=rmq_callback, auto_ack=False)
+    channel.basic_consume(
+        queue=queue_name, on_message_callback=rmq_callback, auto_ack=False
+    )
 
     try:
         channel.start_consuming()
@@ -125,6 +132,7 @@ def start_rmq_consumer():
 
 
 # --- API FastAPI ---
+
 
 class WebhookPayload(BaseModel):
     id_transacao: str
@@ -158,12 +166,14 @@ def webhook_pagamento(data: WebhookPayload):
         # Publica 'status_pagamento'
         status_data = {
             "auction_name": data.leilao_id_interno,
-            "user_id": data.dados_comprador,
-            "status_pagamento": data.status_pagamento
+            "bidder_name": data.dados_comprador,
+            "status_pagamento": data.status_pagamento,
         }
         notify_rabbit_mq(routing_key="status_pagamento", body=status_data)
 
-        Logger.success(f"Status '{data.status_pagamento}' publicado para {data.dados_comprador}.")
+        Logger.success(
+            f"Status '{data.status_pagamento}' publicado para {data.dados_comprador}."
+        )
         return {"status": "recebido"}
 
     except Exception as e:

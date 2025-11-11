@@ -109,6 +109,7 @@ async def efetuar_lance(request: Request):
         response = await client.post(f"{MS_LANCE_URL}/lances", json=data, timeout=10)
         return JSONResponse(content=response.json(), status_code=response.status_code)
     except httpx.HTTPStatusError as e:
+        print("e.response.status_code", e.response.status_code)
         return JSONResponse(
             content=e.response.json(), status_code=e.response.status_code
         )
@@ -117,11 +118,16 @@ async def efetuar_lance(request: Request):
         return JSONResponse(content={"erro": "MS Lance indisponível"}, status_code=503)
 
 
-# --- Endpoints de Interesse (Síncrono) ---
-
-
 @app.post("/leiloes/{leilao_id}/registrar-interesse")
-def registrar_interesse(leilao_id: str, data: InterestRequest):
+async def registrar_interesse(leilao_id: str, data: InterestRequest):
+    client = app.state.http_client
+    response = await client.get(f"{MS_LEILAO_URL}/leiloes/ativos", timeout=10)
+    if response.status_code != 200:
+        raise HTTPException(status_code=404, detail="Leilão não encontrado ou inativo")
+
+    if leilao_id not in [leilao["auction_name"] for leilao in response.json()]:
+        raise HTTPException(status_code=404, detail="Leilão não encontrado ou inativo")
+
     with interest_lock:
         if leilao_id not in interesses:
             interesses[leilao_id] = []
@@ -153,7 +159,6 @@ def cancelar_interesse(leilao_id: str, data: InterestRequest):
 
 @app.get("/eventos/{client_id}")
 async def sse_stream(request: Request, client_id: str):
-    """Mantém conexão SSE com um cliente."""
     Logger.info(f"Gateway: Cliente {client_id} conectou ao stream SSE.")
     message_queue = asyncio.Queue()
 
@@ -192,7 +197,7 @@ def broadcast_message(app: FastAPI, message_data: dict, routing_key: str):
     Logger.info(f"Gateway: Recebido do RMQ '{routing_key}'. Roteando para SSE...")
     target_clients = set()
     leilao_id = message_data.get("auction_name")
-    user_id = message_data.get("user_id") or message_data.get("cliente")
+    bidder_name = message_data.get("bidder_name") or message_data.get("cliente")
 
     message_data["event_type"] = routing_key
     loop = app.state.event_loop
@@ -211,8 +216,8 @@ def broadcast_message(app: FastAPI, message_data: dict, routing_key: str):
                 target_clients.update(interesses[leilao_id])
 
         elif routing_key in ["lance_invalidado", "link_pagamento", "status_pagamento"]:
-            if user_id:
-                target_clients.add(user_id)
+            if bidder_name:
+                target_clients.add(bidder_name)
 
     for client_id in target_clients:
         if client_id in client_streams:

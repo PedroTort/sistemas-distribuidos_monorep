@@ -29,7 +29,9 @@ def notify_rabbit_mq(routing_key: str, body: dict):
             routing_key=routing_key,
             body=json.dumps(body),
         )
-        Logger.info(f"Publicado '{routing_key}' para o leilão {body.get('auction_name')}")
+        Logger.info(
+            f"Publicado '{routing_key}' para o leilão {body.get('auction_name')}"
+        )
         connection.close()
     except Exception as e:
         Logger.error(f"Erro ao publicar no RabbitMQ: {e}")
@@ -61,7 +63,9 @@ def handle_auction_finished(body_str: str):
             winner_data = auction_results.get(auction_name)
             notify_rabbit_mq(routing_key="leilao_vencedor", body=winner_data)
             active_auctions.remove(auction_name)
-            message = MessageFormatter.auction_ended(auction_name, winner_data["cliente"], winner_data["bid_value"])
+            message = MessageFormatter.auction_ended(
+                auction_name, winner_data["cliente"], winner_data["bid_value"]
+            )
             Logger.auction_ended(message)
 
 
@@ -71,7 +75,7 @@ def start_rmq_consumer():
 
     queues_to_consume = {
         "leilao_iniciado": handle_auction_started,
-        "leilao_finalizado": handle_auction_finished
+        "leilao_finalizado": handle_auction_finished,
     }
 
     queue_name = "ms_lance_lifecycle_listener"
@@ -92,7 +96,9 @@ def start_rmq_consumer():
                 Logger.error(f"Erro ao processar {method.routing_key}: {e}")
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    channel.basic_consume(queue=queue_name, on_message_callback=rmq_callback, auto_ack=False)
+    channel.basic_consume(
+        queue=queue_name, on_message_callback=rmq_callback, auto_ack=False
+    )
 
     try:
         channel.start_consuming()
@@ -105,9 +111,10 @@ def start_rmq_consumer():
 
 # --- API FastAPI ---
 
+
 class BidCreate(BaseModel):
     auction_name: str
-    user_id: str
+    bidder_name: str
     bid_value: float
 
 
@@ -129,7 +136,9 @@ def efetuar_lance(new_bid: BidCreate):
     """
     Recebe um lance via REST do API Gateway.
     """
-    Logger.info(f"Recebido lance de {new_bid.user_id} para {new_bid.auction_name} no valor de {new_bid.bid_value}")
+    Logger.info(
+        f"Recebido lance de {new_bid.bidder_name} para {new_bid.auction_name} no valor de {new_bid.bid_value}"
+    )
 
     with lock:
         if new_bid.auction_name in active_auctions:
@@ -138,14 +147,16 @@ def efetuar_lance(new_bid: BidCreate):
             if new_bid.bid_value > current_bid["bid_value"]:
                 new_bid_data = {
                     "auction_name": new_bid.auction_name,
-                    "cliente": new_bid.user_id,
-                    "bid_value": new_bid.bid_value
+                    "cliente": new_bid.bidder_name,
+                    "bid_value": new_bid.bid_value,
                 }
                 auction_results[new_bid.auction_name] = new_bid_data
 
                 notify_rabbit_mq(routing_key="lance_validado", body=new_bid_data)
 
-                message = MessageFormatter.bid_validated(new_bid.auction_name, new_bid.user_id, new_bid.bid_value)
+                message = MessageFormatter.bid_validated(
+                    new_bid.auction_name, new_bid.bidder_name, new_bid.bid_value
+                )
                 Logger.bid_validated(message)
                 return {"status": "lance_aceito", "data": new_bid_data}
             else:
@@ -153,9 +164,9 @@ def efetuar_lance(new_bid: BidCreate):
                 motivo = f"Lance R$ {new_bid.bid_value} não é maior que o lance atual R$ {current_bid['bid_value']}."
                 invalid_data = {
                     "auction_name": new_bid.auction_name,
-                    "user_id": new_bid.user_id,
+                    "bidder_name": new_bid.bidder_name,
                     "bid_value": new_bid.bid_value,
-                    "motivo": motivo
+                    "motivo": motivo,
                 }
                 notify_rabbit_mq(routing_key="lance_invalidado", body=invalid_data)
                 Logger.error(motivo)
@@ -165,9 +176,9 @@ def efetuar_lance(new_bid: BidCreate):
             motivo = "Leilão não está ativo."
             invalid_data = {
                 "auction_name": new_bid.auction_name,
-                "user_id": new_bid.user_id,
+                "bidder_name": new_bid.bidder_name,
                 "bid_value": new_bid.bid_value,
-                "motivo": motivo
+                "motivo": motivo,
             }
             notify_rabbit_mq(routing_key="lance_invalidado", body=invalid_data)
             Logger.error(motivo)

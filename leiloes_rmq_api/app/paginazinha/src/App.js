@@ -238,13 +238,13 @@ const formatMessage = (eventData) => {
 
   switch (eventData.event_type) {
     case 'lance_validado':
-      text = `[${eventData.auction_name}] Novo lance de R$ ${eventData.bid_value.toFixed(2)} por ${eventData.user_id}.`;
+      text = `[${eventData.auction_name}] Novo lance de R$ ${eventData.bid_value.toFixed(2)} por ${eventData.bidder_name}.`;
       break;
     case 'lance_invalidado':
       text = `[${eventData.auction_name}] Seu lance foi considerado inválido. Motivo: ${eventData.motivo || 'N/A'}`;
       break;
     case 'leilao_vencedor':
-      text = `[${eventData.auction_name}] Leilão encerrado! Vencedor: ${eventData.user_id} com R$ ${eventData.bid_value.toFixed(2)}.`;
+      text = `[${eventData.auction_name}] Leilão encerrado! Vencedor: ${eventData.bidder_name} com R$ ${eventData.bid_value.toFixed(2)}.`;
       break;
     case 'link_pagamento':
       text = `[${eventData.auction_name}] Parabéns, você venceu! Link para pagamento: ${eventData.payment_link}`;
@@ -386,10 +386,9 @@ function UserColumn({ userTitle }) {
           throw new Error("Ação desconhecida.");
       }
 
-      // Limpa os campos do modal e fecha
       setTimeout(() => {
         closeModal();
-      }, 1500); // Fecha após 1.5s para ver a mensagem de sucesso
+      }, 1500);
 
     } catch (err) {
       setApiError(err.message || `Erro ao executar ${modalType}.`);
