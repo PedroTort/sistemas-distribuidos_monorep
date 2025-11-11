@@ -48,7 +48,7 @@ def handle_auction_started(body_str: str):
             active_auctions.append(auction_name)
             auction_results[auction_name] = {
                 "auction_name": auction_name,
-                "cliente": "Nenhum lance registrado",
+                "bidder_name": "Nenhum lance registrado",
                 "bid_value": valor_inicial,
             }
             Logger.auction_started(f"Leilão {auction_name} agora ativo no MS Lance!")
@@ -64,7 +64,7 @@ def handle_auction_finished(body_str: str):
             notify_rabbit_mq(routing_key="leilao_vencedor", body=winner_data)
             active_auctions.remove(auction_name)
             message = MessageFormatter.auction_ended(
-                auction_name, winner_data["cliente"], winner_data["bid_value"]
+                auction_name, winner_data["bidder_name"], winner_data["bid_value"]
             )
             Logger.auction_ended(message)
 
@@ -147,7 +147,7 @@ def efetuar_lance(new_bid: BidCreate):
             if new_bid.bid_value > current_bid["bid_value"]:
                 new_bid_data = {
                     "auction_name": new_bid.auction_name,
-                    "cliente": new_bid.bidder_name,
+                    "bidder_name": new_bid.bidder_name,
                     "bid_value": new_bid.bid_value,
                 }
                 auction_results[new_bid.auction_name] = new_bid_data

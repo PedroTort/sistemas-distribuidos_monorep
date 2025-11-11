@@ -138,7 +138,7 @@ async def registrar_interesse(leilao_id: str, data: InterestRequest):
     return {
         "status": "interesse registrado",
         "leilao": leilao_id,
-        "cliente": data.client_id,
+        "bidder_name": data.client_id,
     }
 
 
@@ -168,20 +168,17 @@ async def sse_stream(request: Request, client_id: str):
     async def event_generator():
         try:
             while True:
-                # Verifica se o cliente desconectou
                 if await request.is_disconnected():
                     Logger.info(
                         f"Gateway: Cliente {client_id} desconectou (detectado)."
                     )
                     break
 
-                # Espera por uma mensagem
                 message_data = await message_queue.get()
                 yield {"data": json.dumps(message_data)}
         except asyncio.CancelledError:
             Logger.info(f"Gateway: Conexão SSE para {client_id} cancelada.")
         finally:
-            # Limpa a fila
             async with stream_lock:
                 if client_id in client_streams:
                     del client_streams[client_id]
@@ -190,14 +187,12 @@ async def sse_stream(request: Request, client_id: str):
     return EventSourceResponse(event_generator())
 
 
-# --- Consumidor RabbitMQ (Lógica de Broadcast) ---
-
-
 def broadcast_message(app: FastAPI, message_data: dict, routing_key: str):
+    print(message_data)
     Logger.info(f"Gateway: Recebido do RMQ '{routing_key}'. Roteando para SSE...")
     target_clients = set()
     leilao_id = message_data.get("auction_name")
-    bidder_name = message_data.get("bidder_name") or message_data.get("cliente")
+    bidder_name = message_data.get("bidder_name")
 
     message_data["event_type"] = routing_key
     loop = app.state.event_loop

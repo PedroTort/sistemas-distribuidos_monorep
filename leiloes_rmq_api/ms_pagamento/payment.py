@@ -13,9 +13,6 @@ RABBITMQ_HOST = "localhost"
 EXCHANGE_NAME = "auction"
 
 
-# --- Lógica de Publicação e Consumo (Reutilizada) ---
-
-
 def get_pika_connection_channel():
     connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
     channel = connection.channel()
@@ -40,7 +37,7 @@ def notify_rabbit_mq(routing_key: str, body: dict):
 def handle_auction_winner(body_str: str):
     data = json.loads(body_str)
     auction_name = data.get("auction_name")
-    winner_id = data.get("cliente")
+    winner_id = data.get("bidder_name")
     valor = data.get("valor_lance")
 
     Logger.info(
@@ -51,14 +48,12 @@ def handle_auction_winner(body_str: str):
         Logger.info(f"Leilão {auction_name} terminou sem lances.")
         return
 
-    # 1. (MOCK) Fazer requisição REST ao sistema externo
     Logger.info(f"Solicitando link de pagamento ao sistema externo para {winner_id}...")
     transacao_id = f"trans_{auction_name}_{winner_id}"
     link_pagamento = f"https://pagamento.mock.com/pay/{transacao_id}"
 
     Logger.success(f"Link de pagamento gerado: {link_pagamento}")
 
-    # 2. Publicar 'link_pagamento'
     link_data = {
         "auction_name": auction_name,
         "bidder_name": winner_id,
@@ -66,9 +61,9 @@ def handle_auction_winner(body_str: str):
         "link_pagamento": link_pagamento,
         "transacao_id": transacao_id,
     }
+
     notify_rabbit_mq(routing_key="link_pagamento", body=link_data)
 
-    # 3. (MOCK) Simular o pagamento e o webhook
     simular_webhook_thread = threading.Thread(
         target=simular_chamada_webhook,
         args=(transacao_id, auction_name, winner_id, valor),
@@ -78,7 +73,6 @@ def handle_auction_winner(body_str: str):
 
 
 def simular_chamada_webhook(transacao_id, auction_name, bidder_name, valor):
-    """(MOCK) Simula o sistema externo chamando nosso webhook."""
     time.sleep(10)  # Simula tempo
     status = random.choice(["aprovado", "recusado"])
     Logger.info(f"(MOCK) Sistema externo vai notificar status: {status}")
@@ -92,7 +86,6 @@ def simular_chamada_webhook(transacao_id, auction_name, bidder_name, valor):
     }
 
     try:
-        # Chama o próprio webhook (usando o nome do serviço docker ou 127.0.0.1)
         requests.post("http://127.0.0.1:5003/webhook/pagamento", json=webhook_data)
     except Exception as e:
         Logger.error(f"(MOCK) Erro ao simular chamada de webhook: {e}")
