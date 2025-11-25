@@ -30,3 +30,7 @@ uvicorn ms_lance.bid:app --host 0.0.0.0 --port 5002 --reload
 ```bash
 uvicorn ms_pagamento.payment:app --host 0.0.0.0 --port 5003 --reload
 ```
+
+```bash
+uvicorn mock_sistema_bancario.mock_sistema_bancario:app --host 0.0.0.0 --port 5004 --reload
+```

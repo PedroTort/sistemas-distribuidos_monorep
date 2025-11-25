@@ -10,7 +10,10 @@ from terminal_logger import Logger
 
 RABBITMQ_HOST = "localhost"
 EXCHANGE_NAME = "auction"
+EXTERNAL_BANK_URL = "http://localhost:5004/api/payments"
+MY_WEBHOOK_URL = "http://localhost:5003/webhook/pagamento"
 
+payment_store: Dict[str, dict] = {}
 
 def get_pika_connection_channel():
     connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
@@ -32,6 +35,28 @@ def notify_rabbit_mq(routing_key: str, body: dict):
     except Exception as e:
         Logger.error(f"MS Pagamento erro ao publicar: {e}")
 
+def request_payment_link_external(auction_name, winner_name, amount):
+    payload = {
+        "amount": amount,
+        "client_name": winner_name,
+        "webhook_url": MY_WEBHOOK_URL,
+        "metadata": {
+            "auction_name": auction_name,
+            "bidder_name": winner_name
+        }
+    }
+
+    try:
+        response = requests.post(EXTERNAL_BANK_URL, json=payload, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            Logger.error(f"Erro no Banco Externo: {response.text}")
+            return None
+    except Exception as e:
+        Logger.error(f"Falha ao conectar no Banco Externo: {e}")
+        return None
+
 
 def handle_auction_winner(body_str: str):
     data = json.loads(body_str)
@@ -39,29 +64,36 @@ def handle_auction_winner(body_str: str):
     winner_id = data.get("bidder_name")
     valor = data.get("bid_value")
 
-    Logger.info(
-        f"MS Pagamento: Recebido vencedor {winner_id} do leilão {auction_name} (Valor: R$ {valor})"
-    )
-
     if winner_id == "Nenhum lance registrado":
-        Logger.info(f"Leilão {auction_name} terminou sem lances.")
         return
 
-    Logger.info(f"Solicitando link de pagamento ao sistema externo para {winner_id}...")
-    transacao_id = f"trans_{auction_name}_{winner_id}"
-    link_pagamento = f"http://localhost:5003/pay/{transacao_id}?auction_name={auction_name}&bidder_name={winner_id}&bid_value={valor}"
+    Logger.info(f"Processando vencedor {winner_id} do leilão {auction_name} (R$ {valor})")
 
-    Logger.success(f"Link de pagamento gerado: {link_pagamento}")
+    bank_response = request_payment_link_external(auction_name, winner_id, valor)
 
-    link_data = {
-        "auction_name": auction_name,
-        "bidder_name": winner_id,
-        "bid_value": valor,
-        "payment_link": link_pagamento,
-        "transacao_id": transacao_id,
-    }
+    if bank_response:
+        transacao_id = bank_response["transaction_id"]
+        link = bank_response["payment_link"]
 
-    notify_rabbit_mq(routing_key="link_pagamento", body=link_data)
+        payment_store[transacao_id] = {
+            "auction_name": auction_name,
+            "bidder_name": winner_id,
+            "valor": valor,
+            "status": "AGUARDANDO_PAGAMENTO"
+        }
+
+        Logger.success(f"Pagamento criado. Link externo: {link}")
+
+        link_data = {
+            "auction_name": auction_name,
+            "bidder_name": winner_id,
+            "bid_value": valor,
+            "payment_link": link,
+            "transacao_id": transacao_id,
+        }
+        notify_rabbit_mq(routing_key="link_pagamento", body=link_data)
+    else:
+        Logger.error("Não foi possível gerar link de pagamento.")
 
 def start_rmq_consumer():
     Logger.info("Iniciando consumidor RabbitMQ para MS Pagamento...")
@@ -95,12 +127,12 @@ def start_rmq_consumer():
         connection.close()
         Logger.info("Consumidor RabbitMQ do MS Pagamento encerrado.")
 
-class WebhookPayload(BaseModel):
-    auction_name: str
+
+class WebhookData(BaseModel):
+    transaction_id: str
     status: str
-    bid_value: float
-    bidder_name: str
-    leilao_id_interno: str
+    amount: float
+    metadata: dict
 
 
 @asynccontextmanager
@@ -116,55 +148,32 @@ app = FastAPI(title="MS Pagamento", lifespan=lifespan)
 
 
 @app.post("/webhook/pagamento")
-def webhook_pagamento(data: WebhookPayload):
-    Logger.info(f"MS Pagamento: Recebido Webhook! Dados: {data.model_dump_json()}")
+def webhook_receiver(data: WebhookData):
+    Logger.info(f"Webhook recebido para transação: {data.transaction_id} - Status: {data.status}")
 
-    try:
-        status_data = {
-            "auction_name": data.leilao_id_interno,
-            "status": data.status,
-            "bid_value": data.bid_value,
-            "bidder_name": data.bidder_name,
-            "leilao_id_interno": data.leilao_id_interno,
-        }
+    if data.transaction_id not in payment_store:
+        Logger.warning("Webhook recebido de transação desconhecida!")
+        raise HTTPException(status_code=404, detail="Transação não encontrada")
 
-        notify_rabbit_mq(routing_key="status_pagamento", body=status_data)
+    local_data = payment_store[data.transaction_id]
 
-        Logger.success(
-            f"Status '{data.status}' publicado para {data.bidder_name}."
-        )
-        return {"status": "recebido"}
+    local_data["status"] = data.status
 
-    except Exception as e:
-        Logger.error(f"Erro ao processar webhook: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/pay/{transacao_id}")
-def simular_pagamento_link(
-    transacao_id: str,
-    auction_name: str = Query(...),
-    bidder_name: str = Query(...),
-    bid_value: float = Query(...)
-):
-    status = random.choice(["aprovado", "recusado"])
-    Logger.info(f"(MOCK) Sistema externo vai notificar status: {status}")
-
-    webhook_data = {
-        "auction_name": transacao_id,
-        "status": status,
-        "bid_value": bid_value,
-        "bidder_name": bidder_name,
-        "leilao_id_interno": auction_name,
+    status_msg = {
+        "auction_name": local_data["auction_name"],
+        "status": data.status,
+        "bid_value": data.amount,
+        "bidder_name": local_data["bidder_name"],
+        "transacao_id": data.transaction_id
     }
 
-    try:
-        requests.post("http://127.0.0.1:5003/webhook/pagamento", json=webhook_data)
-    except Exception as e:
-        Logger.error(f"(MOCK) Erro ao simular chamada de webhook: {e}")
+    notify_rabbit_mq(routing_key="status_pagamento", body=status_msg)
+
+    return {"status": "processed"}
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    Logger.info("MS Pagamento (FastAPI/Webhook) iniciando na porta 5003.")
+    Logger.info("MS Pagamento rodando na porta 5003")
     uvicorn.run(app, host="0.0.0.0", port=5003)
