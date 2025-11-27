@@ -13,7 +13,7 @@ EXCHANGE_NAME = "auction"
 EXTERNAL_BANK_URL = "http://localhost:5004/api/payments"
 MY_WEBHOOK_URL = "http://localhost:5003/webhook/pagamento"
 
-payment_store: Dict[str, dict] = {}
+payment_store: dict[str, dict] = {}
 
 def get_pika_connection_channel():
     connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
